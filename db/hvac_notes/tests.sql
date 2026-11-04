@@ -61,8 +61,10 @@ declare v jsonb; n int; v_ver int;
     'select public.hvac_notes_state_save(''review'', ''{}''::jsonb)',
     'select public.hvac_notes_my_import(''{}''::jsonb)',
     'select public.hvac_notes_publish_export()',
-    'select public.hvac_notes_publish_commit(0, ''{}''::jsonb, ''[]''::jsonb, ''{}'', ''[]''::jsonb, ''{}'', null, ''_library/index-a.json'', ''_library/growth-a.json'')'];
-  publish constant text[] := array[calls[11], calls[12]];
+    'select public.hvac_notes_publish_commit(0, ''{}''::jsonb, ''[]''::jsonb, ''{}'', ''[]''::jsonb, ''{}'', null, ''_library/index-a.json'', ''_library/growth-a.json'')',
+    'select public.hvac_notes_shared()',
+    'select public.hvac_notes_card_remove(1)'];
+  publish constant text[] := array[calls[11], calls[12], calls[14]];
   c text;
 begin
   -- signed out: anon may execute nothing
@@ -170,26 +172,48 @@ begin
   select count(*) into n from jsonb_object_keys((public.hvac_notes_my_data()) -> 'cards'); if n <> 1 then raise exception 'card clear %', n; end if;
   reset role;
 
-  -- another user sees none of it, and cannot delete it
+  -- another user: none of the reader's private data, but his highlights and card notes, with his name
   perform pg_temp.act_as('demo_admin');
   select public.hvac_notes_my_data() into v;
   if jsonb_array_length(v -> 'highlights') <> 0 or v -> 'cards' <> '{}'::jsonb or v -> 'positions' <> '{}'::jsonb or v -> 'state' <> '{}'::jsonb then
-    raise exception 'other user sees data %', v;
+    raise exception 'other user sees private data %', v;
   end if;
-  perform pg_temp.expect_error($q$select public.hvac_notes_highlight_delete('abc123')$q$, 'NOT_FOUND');
-  -- the same highlight id for another user is his own row
-  perform public.hvac_notes_highlight_save('abc123', 'theory', 'example', '', 'pink', '', '{"exact": "his own"}'::jsonb);
+  select public.hvac_notes_shared() into v;
+  if jsonb_array_length(v -> 'highlights') <> 2 or jsonb_array_length(v -> 'cards') <> 1
+     or not exists (select 1 from jsonb_array_elements(v -> 'highlights') x where x ->> 'id' = 'abc123' and x ->> 'note' = 'my note' and x ->> 'by' = 'Demo User')
+     or v -> 'cards' -> 0 ->> 'by' <> 'Demo User' or v -> 'cards' -> 0 ->> 'key' <> 'theory/terms/kw' or (v -> 'cards' -> 0) ? 'color' then
+    raise exception 'shared for admin %', v;
+  end if;
+  -- he cannot take over the reader's highlight; he saves his own
+  perform pg_temp.expect_error($q$select public.hvac_notes_highlight_save('abc123', 'theory', 'example', '', 'pink', '', '{"exact": "his own"}'::jsonb)$q$, 'INVALID:id');
+  perform public.hvac_notes_highlight_save('adm001', 'theory', 'example', '', 'pink', 'admin note', '{"exact": "his own"}'::jsonb);
+  perform public.hvac_notes_card_save('theory/terms/kw', 'kW', 'sand', 'admin card note');
+  select count(*) into n from jsonb_array_elements((public.hvac_notes_shared()) -> 'highlights'); if n <> 2 then raise exception 'own in shared %', n; end if;
   reset role;
 
+  -- the reader sees the editor's notes but cannot delete them; deletes his own
   perform pg_temp.act_as('demo_user');
+  select public.hvac_notes_shared() into v;
+  if jsonb_array_length(v -> 'highlights') <> 1 or v -> 'highlights' -> 0 ->> 'by' <> 'Demo Admin' or v -> 'highlights' -> 0 ->> 'note' <> 'admin note'
+     or jsonb_array_length(v -> 'cards') <> 1 or v -> 'cards' -> 0 ->> 'note' <> 'admin card note' then raise exception 'shared for reader %', v; end if;
+  perform pg_temp.expect_error($q$select public.hvac_notes_highlight_delete('adm001')$q$, 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.hvac_notes_card_remove(%s)', v -> 'cards' -> 0 ->> 'id'), 'NO_RIGHT');
   perform public.hvac_notes_highlight_delete('abc123');
   perform pg_temp.expect_error($q$select public.hvac_notes_highlight_delete('abc123')$q$, 'NOT_FOUND');
   select count(*) into n from jsonb_array_elements((public.hvac_notes_my_data()) -> 'highlights'); if n <> 1 then raise exception 'after delete %', n; end if;
   reset role;
 
+  -- the editor removes the reader's remaining highlight and card note (audited)
   perform pg_temp.act_as('demo_admin');
+  select public.hvac_notes_shared() into v;
+  perform public.hvac_notes_highlight_delete('old1');
+  perform public.hvac_notes_card_remove((v -> 'cards' -> 0 ->> 'id')::bigint);
+  perform pg_temp.expect_error(format('select public.hvac_notes_card_remove(%s)', v -> 'cards' -> 0 ->> 'id'), 'NOT_FOUND');
+  select public.hvac_notes_shared() into v;
+  if jsonb_array_length(v -> 'highlights') <> 0 or jsonb_array_length(v -> 'cards') <> 0 then raise exception 'after removal %', v; end if;
   select count(*) into n from jsonb_array_elements((public.hvac_notes_my_data()) -> 'highlights'); if n <> 1 then raise exception 'admin highlight kept %', n; end if;
   reset role;
+  select count(*) into n from core.audit where tile_id = 'hvac-notes' and action = 'note_removed'; if n <> 2 then raise exception 'removal audit %', n; end if;
 
   -- no tile: the bucket shows nothing and refuses writes
   perform pg_temp.act_as('demo_none');

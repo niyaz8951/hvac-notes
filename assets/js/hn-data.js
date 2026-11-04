@@ -111,6 +111,36 @@ window.HNData = (function () {
     return my;
   }
 
+  /* ---------------- everyone else's notes (highlights and card notes, with the author's name) ---------------- */
+
+  const shared = { highlights: [], cards: {}, at: 0 };
+  let sharedLoad = null;
+  // maxAge: reuse what was loaded less than maxAge ms ago. Resolves to true when something changed.
+  function loadShared(maxAge) {
+    if (maxAge && Date.now() - shared.at < maxAge) return Promise.resolve(false);
+    if (sharedLoad) return sharedLoad;
+    sharedLoad = Api.rpc('hvac_notes_shared').then(r => {
+      const before = JSON.stringify([shared.highlights, shared.cards]);
+      shared.highlights = (r.highlights || []).map(h => ({ ...h, by: h.by || 'Someone' }));
+      shared.cards = {};
+      (r.cards || []).forEach(c => (shared.cards[c.key] = shared.cards[c.key] || []).push({ ...c, by: c.by || 'Someone' }));
+      shared.at = Date.now();
+      return JSON.stringify([shared.highlights, shared.cards]) !== before;
+    }).finally(() => { sharedLoad = null; });
+    return sharedLoad;
+  }
+  // Removing someone else's note: right 'edit' only (the database checks).
+  const remove = {
+    async highlight(id) {
+      await Api.rpc('hvac_notes_highlight_delete', { p_id: id });
+      shared.highlights = shared.highlights.filter(h => h.id !== id);
+    },
+    async card(key, id) {
+      await Api.rpc('hvac_notes_card_remove', { p_id: id });
+      if (shared.cards[key]) shared.cards[key] = shared.cards[key].filter(c => c.id !== id);
+    }
+  };
+
   // Writes wait a moment and are merged by key; a failed write is retried, and the reader is told once.
   const queue = new Map();
   let onError = null, lastError = 0;
@@ -161,7 +191,7 @@ window.HNData = (function () {
   };
 
   return {
-    BUCKET, library, nav, page, pages, index, growth, imageUrl, text, my, loadMine, save, flush,
+    BUCKET, library, nav, page, pages, index, growth, imageUrl, text, my, loadMine, save, flush, shared, loadShared, remove,
     onSaveError(fn) { onError = fn; },
     importBackup: data => Api.rpc('hvac_notes_my_import', { p_data: data })
   };

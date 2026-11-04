@@ -2,6 +2,7 @@
 
 ## Built
 - 2026-11-04 - Phase 1, code and database: reader (`index.html`, `assets/`), Publish page (`publish.html`), `db/hvac_notes/001_init.sql`, `db/hvac_notes/tests.sql`, `tools/lint.mjs`, `tools/page-template.md`, local tests (`tools/test/`). All local tests pass on invented content; the real pages were also published and read on a local copy (not in this repo).
+- 2026-11-04 - Shared highlights and notes with the author's name; `edit` removes anyone's. Changed in `001_init.sql` itself (not yet applied anywhere).
 
 ## SQL applied
 | File | Staging | Live |

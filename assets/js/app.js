@@ -42,7 +42,7 @@
   // Only for building the HTML string that the sanitizer reads (never inserted as markup by this code).
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const slugify = window.HVACIndex.slugify;          // shared with the Publish page, so heading ids always match
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
   function fmtDate(iso) {
@@ -55,7 +55,7 @@
 
   // View settings only (paper, font, size, layout, depth): kept on the device, cleared at sign-out.
   function readView() { try { return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') || {}; } catch (e) { return {}; } }
-  const settings = Object.assign({ size: 18, font: 'serif', paper: 'auto', mode: 'scroll', depth: 'full', focusK: 1 }, readView());
+  const settings = Object.assign({ size: 18, font: 'serif', paper: 'auto', mode: 'scroll', depth: 'full', focusK: 1, others: 'show' }, readView());
   function saveView() { try { localStorage.setItem(VIEW_KEY, JSON.stringify(settings)); } catch (e) { /* view settings are optional */ } }
 
   // The reader's own data, from the database (hn-data.js). Re-bound after a restore.
@@ -181,13 +181,35 @@
     el.querySelectorAll('.kcard').forEach(paintCard);
   }
 
+  // Card notes are shared: the reader's own (shown as "You") and everyone else's, each with the author's name.
+  const othersOn = () => settings.others !== 'hide';
+  const cardOthers = key => othersOn() ? (D.shared.cards[key] || []) : [];
+  const cardNotes = key => {
+    const st = cardState[key] || {};
+    return (st.note ? [{ by: 'You', note: st.note, updated: st.updated, mine: true }] : []).concat(cardOthers(key));
+  };
+  const noteBy = (who, iso) => html`<span class="note-by">${who}${iso ? ` · ${fmtDate(iso)}` : ''}</span>`;
   function paintCard(card) {
-    const st = cardState[card.dataset.k] || {};
-    card.dataset.c = cardColor(card.dataset.k);
-    let n = card.querySelector('.kcard-note');
-    if (!st.note) { if (n) n.remove(); return; }
-    if (!n) { n = document.createElement('button'); n.type = 'button'; n.className = 'kcard-note no-hl'; card.insertBefore(n, card.querySelector('.kcard-edit')); }
-    render(n, icon('i-note'), html`<span>${st.note}</span>`);
+    const key = card.dataset.k;
+    card.dataset.c = cardColor(key);
+    card.querySelectorAll('.kcard-note').forEach(n => n.remove());
+    const edit = card.querySelector('.kcard-edit');
+    cardNotes(key).forEach(x => card.insertBefore(one(html`<button class="kcard-note no-hl ${x.mine ? '' : 'other'}" type="button">${icon('i-note')}<span>${noteBy(x.by)}${x.note}</span></button>`), edit));
+  }
+  // Everyone else's notes on a card, in a sheet or focus mode; with 'edit', each can be removed.
+  function otherNotes(key, onChange) {
+    const list = cardOthers(key);
+    if (!list.length) return '';
+    const box = one(html`<div class="other-notes"><p class="sheet-sec">From others</p>${list.map(x => html`<div class="other-note">
+      ${noteBy(x.by, x.updated)}<p class="note-text">${x.note}</p>
+      ${canPublish() ? html`<button class="link-btn danger" type="button" data-rm="${x.id}">Remove</button>` : ''}</div>`)}</div>`);
+    box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+      const x = list.find(n => String(n.id) === b.dataset.rm);
+      if (!x || !await Core.confirm(`Remove ${x.by}'s note on this card? This cannot be undone.`, { ok: 'Remove', danger: true })) return;
+      try { await D.remove.card(key, x.id); b.closest('.other-note').remove(); toast('Note removed'); if (onChange) onChange(); }
+      catch (err) { Core.showError(err); }
+    });
+    return box;
   }
 
   function openCard(card) {
@@ -195,7 +217,9 @@
     const cur = cardColor(key);
     openSheet(html`<div class="sheet-head"><span></span><h2>${title}</h2><button class="link-btn" type="button" data-close>Done</button></div>
       <div class="sheet-swatches kswatches" role="group" aria-label="Colour">${KCOLORS.map(([c, name]) => html`<button class="kswatch" type="button" data-c="${c}" aria-pressed="${c === cur}" aria-label="${name}" title="${name}"></button>`)}</div>
-      <textarea class="note-input" id="card-note" placeholder="Note" aria-label="Note"></textarea>`, body => {
+      <textarea class="note-input" id="card-note" placeholder="Note" aria-label="Note"></textarea>
+      <p class="sheet-hint">Your note is seen by everyone with HVAC Notes. The colour is yours only.</p>
+      ${otherNotes(key, () => paintCard(card))}`, body => {
       body.querySelectorAll('.kswatch').forEach(b => b.onclick = () => {
         Object.assign(cardEntry(key, title), { color: b.dataset.c, title, updated: new Date().toISOString() }); D.save.card(key, 0);
         body.querySelectorAll('.kswatch').forEach(x => x.setAttribute('aria-pressed', x === b));
@@ -764,7 +788,7 @@
     slugify, uid, clamp, debounce, fmtDate, fmtMonth, one, chev, settings, saveView, bindMine,
     mine: () => ({ positions, highlights, cardState, reviewState, practiceState, seen }),
     saveReview, savePractice, toast, copyText, loadNav, loadPage, renderMarkdown, renderInline, autoColor, cardColor,
-    cardNotesOf, notesCount, cardEntry, cardify, paintCard, openCard, enhance, fieldItem, markWide, loadImages,
+    cardNotesOf, notesCount, cardEntry, cardify, paintCard, openCard, othersOn, cardOthers, cardNotes, noteBy, otherNotes, enhance, fieldItem, markWide, loadImages,
     applySettings, updateThemeColor, backBtn, searchBtn, focusBtn, setNav, watchLargeTitle, renderTabbar, where, setActive,
     canPublish, renderSidebar, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
     changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY

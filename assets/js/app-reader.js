@@ -9,15 +9,18 @@
     paintCard, openCard, enhance, fieldItem, markWide, loadImages, applySettings, updateThemeColor, backBtn, searchBtn, focusBtn,
     setNav, watchLargeTitle, renderTabbar, where, setActive, canPublish, renderSidebar, coverArt, getIndex, pageOf, aliasMap,
     migrateAliases, routeOf, relatedOf, reviewPool, dueOf, changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY,
-    hlsOf, progressOf, saveReview, savePractice } = A;
+    hlsOf, progressOf, saveReview, savePractice, othersOn, cardOthers, cardNotes, noteBy, otherNotes } = A;
   const m = () => A.mine();
   const setTitle = t => Core.setTitle(t ? `${t} · ${SITE}` : SITE);
   const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
 
   /* ================= views ================= */
 
+  // Highlights and card notes in a notebook: the reader's own and, unless hidden, everyone else's.
+  const othersIn = tab => othersOn() ? D.shared.highlights.filter(h => h.tab === tab).length
+    + Object.entries(D.shared.cards).reduce((n, [k, l]) => n + (k.startsWith(tab + '/') ? l.length : 0), 0) : 0;
   const notesRow = tab => {
-    const n = notesCount(tab);
+    const n = notesCount(tab) + othersIn(tab);
     return n ? html`<div class="group gap-b"><a class="hn-row with-icon" href="#/notebook/${tab}"><span class="icon-tile it-notes">${icon('i-notebook')}</span>
       <span class="row-main"><span class="row-title">Highlights &amp; Notes</span></span><span class="row-value">${n}</span>${chev()}</a></div>` : '';
   };
@@ -131,33 +134,49 @@
   }
 
   let nbTab = null;           // notebook whose highlights are shown and exported
+  let nbWho = 'all';          // whose: 'all' (everyone) or 'mine'
+  function notebookItems(tab) {
+    const all = nbWho === 'all' && othersOn();
+    const hl = hlsOf(tab).map(h => ({ ...h, by: 'You', mine: true }))
+      .concat(all ? D.shared.highlights.filter(h => h.tab === tab) : []);
+    const cards = cardNotesOf(tab).map(c => ({ ...c, by: 'You', mine: true }));
+    if (all) Object.entries(D.shared.cards).forEach(([key, list]) => {
+      if (!key.startsWith(tab + '/')) return;
+      const [, slug, id] = key.split('/');
+      list.forEach(x => cards.push({ key, tab, slug, id, title: x.title, note: x.note, updated: x.updated, by: x.by }));
+    });
+    return { hl, cards, all };
+  }
   function viewNotebook(tab) {
     if (!TAB[tab]) return viewMissing();
     nbTab = tab;
     setActive('notebook', tab, null);
-    const t = TAB[tab], mine = hlsOf(tab);
+    const t = TAB[tab], { hl, cards, all } = notebookItems(tab);
     setTitle(`${t.name} Highlights`);
     setNav({ left: backBtn(`#/${tab}`, t.name), title: 'Highlights & Notes', right: html`<button class="nav-btn" id="btn-export" type="button" aria-label="Export">${icon('i-share')}</button>` });
+    const byLine = x => html`<div class="nb-date">${all ? `${x.by} · ` : ''}${fmtDate(x.created || x.updated)}</div>`;
     const byPage = {};
-    mine.forEach(h => { (byPage[`${h.tab}/${h.slug}`] = byPage[`${h.tab}/${h.slug}`] || []).push(h); });
-    const order = TABS.map(x => x.id);
-    const keys = Object.keys(byPage).sort((a, b) => order.indexOf(a.split('/')[0]) - order.indexOf(b.split('/')[0]) || a.localeCompare(b));
+    hl.forEach(h => { (byPage[`${h.tab}/${h.slug}`] = byPage[`${h.tab}/${h.slug}`] || []).push(h); });
+    const keys = Object.keys(byPage).sort((a, b) => a.localeCompare(b));
     const body = keys.map(k => {
-      const [, slug] = k.split('/'), list = byPage[k];
+      const [, slug] = k.split('/'), list = byPage[k].sort((a, b) => String(a.created).localeCompare(String(b.created)));
       return html`<section class="nb-page" data-tab="${tab}">
         <a class="nb-head" href="#/${tab}/${slug}"><span class="nb-title">${list[0].title || slug}</span></a>
         <div class="group">${list.map(h => html`<a class="nb-item" href="#/${tab}/${slug}/hl-${h.id}" data-c="${h.color}">
           <div class="nb-quote">${h.quote.exact}</div>
           ${h.note ? html`<div class="nb-note">${icon('i-note')}<span>${h.note}</span></div>` : ''}
-          <div class="nb-date">${fmtDate(h.created)}</div></a>`)}</div></section>`;
+          ${byLine(h)}</a>`)}</div></section>`;
     });
-    const cards = cardNotesOf(tab).sort((a, b) => (a.slug + a.title).localeCompare(b.slug + b.title));
+    cards.sort((a, b) => (a.slug + a.title).localeCompare(b.slug + b.title) || String(a.updated).localeCompare(String(b.updated)));
     const cardsBox = cards.length ? html`<section class="nb-page" data-tab="${tab}"><p class="nb-head"><span class="nb-title">Card Notes</span></p>
       <div class="group">${cards.map(c => html`<a class="nb-item kc-item" href="#/${tab}/${c.slug}/${c.id}" data-c="${cardColor(c.key)}">
         <div class="nb-quote">${c.title}</div><div class="nb-note">${icon('i-note')}<span>${c.note}</span></div>
-        ${c.updated ? html`<div class="nb-date">${fmtDate(c.updated)}</div>` : ''}</a>`)}</div></section>` : '';
-    render(main, html`<div class="hn-page"><h1 class="large-title">Highlights &amp; Notes</h1><p class="subtitle">${t.name}</p>
+        ${c.updated || all ? byLine(c) : ''}</a>`)}</div></section>` : '';
+    const who = othersOn() ? html`<div class="seg gap-b" id="seg-who"><button type="button" data-v="all" aria-pressed="${nbWho === 'all'}">Everyone</button>
+      <button type="button" data-v="mine" aria-pressed="${nbWho === 'mine'}">Mine</button></div>` : '';
+    render(main, html`<div class="hn-page"><h1 class="large-title">Highlights &amp; Notes</h1><p class="subtitle">${t.name}</p>${who}
       ${keys.length || cards.length ? [body, cardsBox] : html`<div class="empty"><strong>No Highlights</strong></div>`}</div>`);
+    main.querySelectorAll('#seg-who button').forEach(b => b.onclick = () => { nbWho = b.dataset.v; viewNotebook(tab); });
     watchLargeTitle();
   }
 
@@ -478,6 +497,7 @@
         <div class="fx-tools">
           <div class="fx-swatches" role="group" aria-label="Colour">${KCOLORS.map(([k, name]) => html`<button class="kswatch" type="button" data-fx="color" data-c="${k}" aria-pressed="${k === color}" aria-label="${name}" title="${name}"></button>`)}</div>
           <textarea class="fx-note" rows="2" placeholder="Note" aria-label="Note on ${c.title}"></textarea>
+          ${otherNotes(c.key, () => repaintPageCard(c.key))}
         </div>
       </div>${ctx(next, i + 1)}`);
     const nav = el.querySelectorAll('.fx-nav button');
@@ -563,10 +583,9 @@
   async function openPeek(t) {
     const cards = await cardsOfPage(t.tab, t.slug, '');
     const c = cards.find(x => x.key === `${t.tab}/${t.slug}/${t.id}`); if (!c) { location.hash = `#/${t.tab}/${t.slug}/${t.id}`; return; }
-    const st = m().cardState[c.key] || {};
     openSheet(html`<div class="sheet-head"><span></span><h2>${TAB[t.tab] ? TAB[t.tab].name : ''} · ${t.page.title}</h2><button class="link-btn" type="button" data-close>Done</button></div>
       <div class="book peek-book"><section class="kcard" data-c="${cardColor(c.key)}" data-k="${c.key}"><h3>${c.title}</h3>${bodyOfCard(c)}
-      ${st.note ? html`<p class="kcard-note no-hl static">${icon('i-note')}<span>${st.note}</span></p>` : ''}</section></div>
+      ${cardNotes(c.key).map(x => html`<p class="kcard-note no-hl static ${x.mine ? '' : 'other'}">${icon('i-note')}<span>${noteBy(x.by)}${x.note}</span></p>`)}</section></div>
       <div class="sheet-actions"><a class="btn" data-nopeek href="#/${t.tab}/${t.slug}/${t.id}">Open in ${t.page.title}</a></div>`, body => {
       body.addEventListener('click', e => { if (peekLink(e)) e.stopPropagation(); });
       loadImages(body, () => { });
@@ -1099,7 +1118,7 @@
     return best < 0 ? null : { start: best, end: best + L };
   }
 
-  function wrapSpan(el, s, e, h, isNew) {
+  function wrapSpan(el, s, e, h, isNew, other) {
     const { nodes } = textIndex(el), segs = [];
     for (const { n, s: base } of nodes) {
       const len = n.data.length;
@@ -1112,25 +1131,49 @@
       if (b < n.data.length) n.splitText(b);
       if (a > 0) n = n.splitText(a);
       const mk = document.createElement('mark');
-      mk.className = 'hl' + (h.note ? ' has-note' : '') + (isNew ? ' new' : '');
+      mk.className = 'hl' + (other ? ' other' : '') + (h.note ? ' has-note' : '') + (isNew ? ' new' : '');
       mk.dataset.hl = h.id; mk.dataset.c = h.color;
       n.parentNode.insertBefore(mk, n); mk.appendChild(n);
     }
   }
 
+  // Everyone else's highlights first (a faint tint), then the reader's own on top.
+  function applyOthers(book) {
+    const R = A.R; if (!R || !othersOn()) return;
+    const list = D.shared.highlights.filter(h => h.tab === R.tab && h.slug === R.slug);
+    if (!list.length) return;
+    const { text } = textIndex(book);
+    list.forEach(h => { const loc = locate(h.quote, text); if (loc) wrapSpan(book, loc.start, loc.end, h, false, true); });
+  }
   function applyHighlights(book) {
     const R = A.R;
+    applyOthers(book);
     const mine = m().highlights.filter(h => h.tab === R.tab && h.slug === R.slug);
     if (!mine.length) return;
     const { text } = textIndex(book);
     mine.forEach(h => { const loc = locate(h.quote, text); if (loc) wrapSpan(book, loc.start, loc.end, h, false); });
   }
 
-  function unwrap(id) {
-    document.querySelectorAll(`mark.hl[data-hl="${CSS.escape(id)}"]`).forEach(mk => {
-      const p = mk.parentNode; while (mk.firstChild) p.insertBefore(mk.firstChild, mk);
+  function unwrapMarks(list) {
+    list.forEach(mk => {
+      const p = mk.parentNode; if (!p) return;
+      while (mk.firstChild) p.insertBefore(mk.firstChild, mk);
       p.removeChild(mk); p.normalize();
     });
+  }
+  const unwrap = id => unwrapMarks(document.querySelectorAll(`mark.hl[data-hl="${CSS.escape(id)}"]`));
+
+  // Everyone else's notes changed (reloaded, removed, shown or hidden): redraw them where they appear.
+  function refreshOthers() {
+    const book = $('#book');
+    if (book && A.R) {
+      const f = settings.mode === 'pages' ? fraction() : null;
+      unwrapMarks([...book.querySelectorAll('mark.hl.other')]);
+      applyOthers(book);
+      book.querySelectorAll('.kcard').forEach(paintCard);
+      if (f != null) layout(f);
+    }
+    if (where.view === 'notebook') viewNotebook(nbTab);
   }
 
   function createHighlight(range, color) {
@@ -1174,12 +1217,32 @@
     }
   }, 120));
 
+  function openOtherHighlight(h) {
+    openSheet(html`<div class="sheet-head"><span></span><h2>Highlight</h2><button class="link-btn" type="button" data-close>Done</button></div>
+      <p class="sheet-by">${noteBy(h.by, h.updated || h.created)}</p>
+      <blockquote class="sheet-quote" data-c="${h.color}">${h.quote.exact}</blockquote>
+      ${h.note ? html`<p class="note-text other-text">${h.note}</p>` : ''}
+      <div class="sheet-actions"><button class="btn" type="button" data-act="copy">${icon('i-copy')}Copy</button>
+      ${canPublish() ? html`<button class="btn danger" type="button" data-act="remove">${icon('i-trash')}Remove</button>` : ''}</div>`, body => {
+      body.querySelector('[data-act="copy"]').onclick = () => copyText(`“${h.quote.exact}”${h.note ? `\nNote (${h.by}): ${h.note}` : ''}\n— ${h.title}, ${SITE}`);
+      const rm = body.querySelector('[data-act="remove"]');
+      if (rm) rm.onclick = async () => {
+        if (!await Core.confirm(`Remove ${h.by}'s highlight${h.note ? ' and note' : ''}? This cannot be undone.`, { ok: 'Remove', danger: true })) return;
+        try { await D.remove.highlight(h.id); } catch (err) { Core.showError(err); return; }
+        unwrap(h.id); closeSheet(); toast('Highlight removed');
+        if (where.view === 'notebook') viewNotebook(nbTab);
+      };
+    });
+  }
+
   function openHighlight(id, focusNote) {
-    const h = m().highlights.find(x => x.id === id); if (!h) return;
+    const h = m().highlights.find(x => x.id === id);
+    if (!h) { const o = D.shared.highlights.find(x => x.id === id); if (o) openOtherHighlight(o); return; }
     openSheet(html`<div class="sheet-head"><span></span><h2>Highlight</h2><button class="link-btn" type="button" data-close>Done</button></div>
       <blockquote class="sheet-quote" id="hq" data-c="${h.color}">${h.quote.exact}</blockquote>
       <div class="sheet-swatches" role="group" aria-label="Colour">${COLORS.map(c => html`<button class="swatch" type="button" data-c="${c}" aria-pressed="${c === h.color}" aria-label="${c}"></button>`)}</div>
       <textarea class="note-input" id="note-input" placeholder="Note" aria-label="Note"></textarea>
+      <p class="sheet-hint">Your highlight and note are seen by everyone with HVAC Notes.</p>
       <div class="sheet-actions"><button class="btn" type="button" data-act="copy">${icon('i-copy')}Copy</button>
       <button class="btn danger" type="button" data-act="delete">${icon('i-trash')}Delete</button></div>`, body => {
       const marks = () => document.querySelectorAll(`mark.hl[data-hl="${CSS.escape(id)}"]`);
@@ -1237,12 +1300,19 @@
     const book = $('#book'), R = A.R; if (!book) return;
     const hs = [...book.querySelectorAll('h2, h3')];
     const seenIds = new Set(), mine = [];
-    book.querySelectorAll('mark.hl').forEach(mk => { if (!seenIds.has(mk.dataset.hl)) { seenIds.add(mk.dataset.hl); const h = m().highlights.find(x => x.id === mk.dataset.hl); if (h) mine.push(h); } });
+    book.querySelectorAll('mark.hl').forEach(mk => {
+      if (seenIds.has(mk.dataset.hl)) return;
+      seenIds.add(mk.dataset.hl);
+      const own = m().highlights.find(x => x.id === mk.dataset.hl);
+      const h = own ? { ...own, by: 'You' } : D.shared.highlights.find(x => x.id === mk.dataset.hl);
+      if (h) mine.push(h);
+    });
     const pg = el => settings.mode === 'pages' ? html`<span class="row-value">${pageIndexOf(el) + 1}</span>` : '';
     const contents = hs.length ? html`<div class="group">${hs.map(h => html`<button class="hn-row toc-row ${h.tagName === 'H3' ? 'sub' : ''}" type="button" data-go="${h.id}">
         <span class="row-main"><span class="row-title">${h.textContent}</span></span>${pg(h)}</button>`)}</div>` : html`<div class="empty">No Sections</div>`;
     const hls = mine.length ? html`<div class="group">${mine.map(h => html`<button class="nb-item hn-row block" type="button" data-hl="${h.id}" data-c="${h.color}">
-        <div class="nb-quote">${h.quote.exact}</div>${h.note ? html`<div class="nb-note">${icon('i-note')}<span>${h.note}</span></div>` : ''}</button>`)}</div>` : html`<div class="empty">No Highlights</div>`;
+        <div class="nb-quote">${h.quote.exact}</div>${h.note ? html`<div class="nb-note">${icon('i-note')}<span>${h.note}</span></div>` : ''}
+        <div class="nb-date">${h.by} · ${fmtDate(h.created || h.updated)}</div></button>`)}</div>` : html`<div class="empty">No Highlights</div>`;
     openSheet(html`<div class="sheet-head"><span></span><h2>${R.title}</h2><button class="link-btn" type="button" data-close>Done</button></div>
       <div class="seg gap-b" id="seg-pane"><button type="button" data-v="c" aria-pressed="true">Contents</button><button type="button" data-v="h" aria-pressed="false">Highlights${mine.length ? ` (${mine.length})` : ''}</button></div>
       <div id="pane-c">${contents}</div><div id="pane-h" hidden>${hls}</div>`, body => {
@@ -1262,6 +1332,7 @@
       <p class="sheet-sec">Font</p><div class="seg" id="seg-font">${segBtn('serif', 'Serif', settings.font, 'f-serif')}${segBtn('sans', 'Sans', settings.font, 'f-sans')}</div>
       <p class="sheet-sec">Page</p><div class="themes" id="themes">${THEMES.map(t => html`<button class="theme-btn" type="button" data-v="${t.id}" aria-pressed="${t.id === settings.paper}"><span class="tsw tsw-${t.id}">Aa</span>${t.name}</button>`)}</div>
       <p class="sheet-sec">Layout</p><div class="seg" id="seg-mode">${segBtn('pages', 'Pages', settings.mode)}${segBtn('scroll', 'Scroll', settings.mode)}</div>
+      <p class="sheet-sec">Others' highlights &amp; notes</p><div class="seg" id="seg-others">${segBtn('show', 'Show', settings.others)}${segBtn('hide', 'Hide', settings.others)}</div>
       <p class="sheet-note">Auto follows the site's day and night setting (the Night / Day button at the top).</p>`, body => {
       const relayout = () => { const f = fraction(); applySettings(); if (A.R) requestAnimationFrame(() => layout(f)); };
       body.querySelectorAll('[data-step]').forEach(b => b.onclick = () => {
@@ -1276,6 +1347,7 @@
       seg('#seg-font', 'font', relayout);
       seg('#themes', 'paper', applySettings);
       seg('#seg-mode', 'mode', relayout);
+      seg('#seg-others', 'others', () => { saveView(); refreshOthers(); renderSidebar(); });
     });
   }
 
@@ -1283,18 +1355,20 @@
     const name = TAB[nbTab] ? TAB[nbTab].name : 'All notebooks';
     const lines = [`# ${SITE} · ${name}: highlights and notes`, '', `Exported ${fmtDate(new Date().toISOString())}`, ''];
     const order = TABS.map(t => t.id);
-    const sorted = (TAB[nbTab] ? hlsOf(nbTab) : [...m().highlights]).sort((a, b) => order.indexOf(a.tab) - order.indexOf(b.tab) || (a.slug + a.created).localeCompare(b.slug + b.created));
+    const items = TAB[nbTab] ? notebookItems(nbTab) : null;
+    const sorted = (items ? items.hl : [...m().highlights]).sort((a, b) => order.indexOf(a.tab) - order.indexOf(b.tab) || (a.slug + a.created).localeCompare(b.slug + b.created));
     let cur = '';
     sorted.forEach(h => {
       const k = h.tab + '/' + h.slug;
       if (k !== cur) { cur = k; lines.push(`## ${TAB[h.tab] ? TAB[h.tab].name : h.tab}: ${h.title} (#/${k})`, ''); }
       lines.push(`> ${h.quote.exact.replace(/\n+/g, ' ')}`);
+      if (items && items.all) lines.push('', `— ${h.by}`);
       if (h.note) lines.push('', `Note: ${h.note}`);
       lines.push('');
     });
-    const cards = TAB[nbTab] ? cardNotesOf(nbTab) : Object.entries(m().cardState).filter(([, v]) => v.note).map(([key, v]) => ({ key, ...v }));
+    const cards = items ? items.cards : Object.entries(m().cardState).filter(([, v]) => v.note).map(([key, v]) => ({ key, ...v }));
     cards.sort((a, b) => a.key.localeCompare(b.key)).forEach(c => {
-      lines.push(`## Card: ${c.title} (#/${c.key})`, '', `Note: ${c.note}`, '');
+      lines.push(`## Card: ${c.title} (#/${c.key})`, '', `Note${items && items.all ? ` (${c.by})` : ''}: ${c.note}`, '');
     });
     return lines.join('\n');
   }
@@ -1569,7 +1643,7 @@
   async function start() {
     D.onSaveError(err => Core.showError(err));
     render(main, html`<div class="loading-veil"><span class="spin"></span>Loading</div>`);
-    try { await Promise.all([D.library(), D.loadMine()]); }
+    try { await Promise.all([D.library(), D.loadMine(), D.loadShared().catch(() => false)]); }
     catch (err) {
       if (err && err.code === 'SIGNED_OUT') { Core.showError(err); return; }
       Core.showState('Cannot load', Api.errorMessage(err), { href: location.pathname, label: 'Try again' }); return;
@@ -1582,6 +1656,10 @@
     await route();
     getIndex().then(x => { IDXC = x; }, () => { });
     migrateAliases().catch(() => { });
+    // Everyone else's notes: reloaded at most once a minute, when a page opens or the tab comes back.
+    const fresh = () => D.loadShared(60000).then(changed => { if (changed) { refreshOthers(); renderSidebar(); } }, () => { });
+    window.addEventListener('hashchange', fresh);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') fresh(); });
   }
 
   Core.requireLogin({ tile: 'hvac-notes' }).then(start);

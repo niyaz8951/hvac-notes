@@ -71,6 +71,11 @@ await user.evaluate(() => { const p = document.querySelector('#book > p:not(.pag
 await user.waitForSelector('#hl-bar:not([hidden])'); await user.click('#hl-bar .swatch[data-c="blue"]');
 await user.waitForTimeout(800);
 ok(sql("select count(*) from hvac_notes.highlights h join core.profiles p on p.id = h.user_id where p.username = 'demo_user' and h.color = 'blue'") === '1', 'highlight saved for this reader');
+await user.click('#book mark.hl'); await user.waitForSelector('#sheet:not([hidden]) #note-input');
+ok(/seen by everyone/i.test(await text(user, '#sheet')), 'the highlight sheet says notes are shared');
+await user.fill('#note-input', 'Invented note from the reader'); await user.waitForTimeout(1200);
+await user.click('#sheet [data-close]');
+ok(sql("select author || '|' || note from hvac_notes.highlights h join core.profiles p on p.id = h.user_id where p.username = 'demo_user'") === 'Demo User|Invented note from the reader', 'note saved with the author name');
 // the second page: video card, prereq link
 await user.goto(BASE + '/hvac-notes/#/theory/test-second');
 await user.waitForSelector('#book .video-card');
@@ -84,6 +89,13 @@ await user.click('#book a[href="#/chillers/terms/zeta-unit"]');
 await user.waitForSelector('#sheet:not([hidden]) .kcard');
 ok(/invented unit/.test(await text(user, '#sheet')), 'a link to a card opens the card in place');
 await user.click('#sheet [data-close]');
+// a card note
+await user.goto(BASE + '/hvac-notes/#/chillers/terms');
+await user.waitForSelector('.kcard[data-k="chillers/terms/zeta-unit"] .kcard-edit');
+await user.click('.kcard[data-k="chillers/terms/zeta-unit"] .kcard-edit'); await user.waitForSelector('#card-note');
+await user.fill('#card-note', 'Invented card note'); await user.waitForTimeout(1200);
+await user.click('#sheet [data-close]');
+ok(sql("select author || '|' || note from hvac_notes.cards c join core.profiles p on p.id = c.user_id where p.username = 'demo_user'") === 'Demo User|Invented card note', 'card note saved with the author name');
 // search
 await user.keyboard.press('/'); await user.fill('#search-input', 'tqx');
 await user.waitForSelector('#search-results a');
@@ -107,13 +119,29 @@ const refused = await user.evaluate(async () => { try { await Api.rpc('hvac_note
 ok(refused === 'NO_RIGHT', 'publish functions refuse a reader (NO_RIGHT)');
 ok(user.problems.length === 0, 'reader: no console errors or CSP reports' + (user.problems.length ? ': ' + user.problems.join(' | ') : ''));
 
-// 3. phone width
+// 3. the editor sees the reader's highlight, note and card note with his name, and removes the highlight
+await admin.goto(BASE + '/hvac-notes/#/theory/test-basics');
+await admin.waitForSelector('#book mark.hl.other.has-note');
+await admin.click('#book mark.hl.other'); await admin.waitForSelector('#sheet:not([hidden]) .sheet-by');
+ok(/Demo User/.test(await text(admin, '#sheet .sheet-by')) && /Invented note from the reader/.test(await text(admin, '#sheet')), "another user's highlight shows its author and note");
+await admin.click('#sheet [data-act="remove"]'); await admin.click('.sheet .actions button.danger');
+await admin.waitForFunction(() => !document.querySelector('#book mark.hl.other'));
+ok(sql("select count(*) from hvac_notes.highlights h join core.profiles p on p.id = h.user_id where p.username = 'demo_user'") === '0', "the editor removed the reader's highlight");
+await admin.goto(BASE + '/hvac-notes/#/chillers/terms');
+await admin.waitForSelector('.kcard[data-k="chillers/terms/zeta-unit"] .kcard-note.other');
+ok(/Demo User\s*Invented card note/.test(await text(admin, '.kcard[data-k="chillers/terms/zeta-unit"] .kcard-note.other')), 'card note shows its author on the card');
+await admin.goto(BASE + '/hvac-notes/#/notebook/chillers');
+await admin.waitForSelector('#seg-who');
+ok(/Demo User/.test(await text(admin, 'main')), 'notebook "Everyone" lists notes with names');
+ok(admin.problems.length === 0, 'editor reading: no console errors or CSP reports' + (admin.problems.length ? ': ' + admin.problems.join(' | ') : ''));
+
+// 4. phone width
 const phone = await session('demo_user', 'light', 390);
 await phone.goto(BASE + '/hvac-notes/#/theory/test-basics');
 await phone.waitForSelector('#book .katex');
 ok(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'phone width 390 px: no sideways scroll');
 
-// 4. no tile
+// 5. no tile
 const none = await session('demo_none');
 await none.goto(BASE + '/hvac-notes/');
 await none.waitForSelector('.state h2');
