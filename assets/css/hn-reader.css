@@ -88,12 +88,13 @@
 }
 
 /* Notebook covers: shades of the Daikin navy, mixed with the theme's accents */
-[data-tab="theory"] { --cover: var(--brand-navy); }
-[data-tab="chillers"] { --cover: color-mix(in srgb, var(--brand-sky) 38%, var(--brand-navy)); }
-[data-tab="ahu"] { --cover: color-mix(in srgb, var(--success) 42%, var(--brand-navy)); }
-[data-tab="fcu"] { --cover: color-mix(in srgb, var(--warning) 45%, var(--brand-navy)); }
-[data-tab="systems"] { --cover: color-mix(in srgb, var(--brand-sky) 18%, var(--brand-navy)); }
-[data-tab="ashrae"] { --cover: color-mix(in srgb, var(--danger) 34%, var(--brand-navy)); }
+/* Notebook covers keep the old site's colours (the reader's own look) */
+[data-tab="theory"] { --cover: #4B44C6; }
+[data-tab="chillers"] { --cover: #0A64D8; }
+[data-tab="ahu"] { --cover: #1F8A44; }
+[data-tab="fcu"] { --cover: #D0600B; }
+[data-tab="systems"] { --cover: #0E8C9C; }
+[data-tab="ashrae"] { --cover: #7D5F3A; }
 
 /* ---------- base ---------- */
 body.hn {
