@@ -1,0 +1,17 @@
+/* HVAC Notes: the Publish page. Core theme only; a few layout touches. */
+.hp-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.hp-tabs .chip { cursor: default; }
+.hp-gap { margin-top: 12px; }
+.small-note { font-size: .88rem; flex: 1 1 260px; }
+.hp-whole { margin-top: 14px; }
+.hp-list { word-break: break-word; font-family: var(--mono); font-size: .85em; }
+.hp-h3 { margin-top: var(--space-5); }
+.hp-ul { margin: 6px 0 0; padding-left: 20px; }
+.hp-ul li { margin: 3px 0; overflow-wrap: anywhere; }
+.hp-ul .mono { color: var(--text-2); margin-right: 4px; }
+.notice .hp-ul .mono { color: inherit; opacity: .8; }
+.hp-details { margin: 10px 0; }
+.hp-details summary { cursor: pointer; color: var(--text-2); }
+#review .row.end { margin-top: var(--space-4); }
+#review .table-wrap th { white-space: normal; width: 34%; }
+#pub-error { display: block; color: var(--danger); margin-top: var(--space-3); }

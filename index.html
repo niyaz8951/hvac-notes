@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en" data-loading>
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cykpvtekrdfmqimtrcps.supabase.co; connect-src 'self' https://cykpvtekrdfmqimtrcps.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HVAC Notes - DAME HUB</title>
+<meta name="theme-color" content="#F3F7FA" id="theme-color">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="/hvac-notes/manifest.webmanifest">
+<link rel="stylesheet" href="/dame-hub/core/v1/theme.css">
+<link rel="stylesheet" href="/hvac-notes/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="/hvac-notes/assets/css/hn-reader.css">
+<link rel="stylesheet" href="/hvac-notes/assets/css/hn-widgets.css">
+<link rel="icon" href="/dame-hub/core/v1/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/dame-hub/core/v1/icons/apple-touch-icon.png">
+<link rel="preload" href="/hvac-notes/vendor/fonts/source-serif-4-wght.woff2" as="font" type="font/woff2" crossorigin>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="HVAC Notes">
+<meta name="format-detection" content="telephone=no">
+<script src="/hvac-notes/assets/js/hn-prepaint.js"></script>
+<script src="/dame-hub/core/v1/config.js" defer></script>
+<script src="/dame-hub/core/v1/api.js" defer></script>
+<script src="/dame-hub/core/v1/core.js" defer></script>
+<script src="/hvac-notes/vendor/dompurify/purify.min.js" defer></script>
+<script src="/hvac-notes/vendor/marked.js" defer></script>
+<script src="/hvac-notes/vendor/katex/katex.min.js" defer></script>
+<script src="/hvac-notes/assets/js/hn-dom.js" defer></script>
+<script src="/hvac-notes/assets/js/hn-expr.js" defer></script>
+<script src="/hvac-notes/assets/js/indexer.js" defer></script>
+<script src="/hvac-notes/assets/js/hn-data.js" defer></script>
+<script src="/hvac-notes/assets/js/widgets.js" defer></script>
+<script src="/hvac-notes/assets/js/app.js" defer></script>
+<script src="/hvac-notes/assets/js/app-reader.js" defer></script>
+</head>
+<body class="hn">
+  <header id="topbar"></header>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="navbar" id="navbar" data-shell hidden>
+    <div class="nav-side nav-left" id="nav-left"></div>
+    <div class="nav-title" id="nav-title" aria-hidden="true"></div>
+    <div class="nav-side nav-right" id="nav-right"></div>
+  </header>
+  <nav class="sidebar" id="sidebar" aria-label="Notebooks" data-shell hidden></nav>
+  <main id="main" class="main" tabindex="-1"></main>
+  <nav class="tabbar" id="tabbar" aria-label="Sections" data-shell hidden></nav>
+
+  <!-- Appears while text is selected in a page -->
+  <div class="hl-bar" id="hl-bar" role="toolbar" aria-label="Highlight selected text" hidden></div>
+
+  <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+  <section class="hn-sheet" id="sheet" role="dialog" aria-modal="true" hidden>
+    <div class="sheet-grabber" aria-hidden="true"></div>
+    <div class="sheet-body" id="sheet-body"></div>
+  </section>
+
+  <div id="search" class="search" role="dialog" aria-modal="true" aria-label="Search" hidden>
+    <div class="search-panel">
+      <div class="search-head">
+        <label class="search-field">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="search-input" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search">
+        </label>
+        <button class="link-btn" id="search-close" type="button">Cancel</button>
+      </div>
+      <ol id="search-results" class="search-results"></ol>
+    </div>
+  </div>
+
+  <!-- Icon set: original line icons drawn for this site -->
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+
+    <symbol id="i-review" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="13" height="13" rx="2"/><path d="M7.5 4h11a2 2 0 0 1 2 2v11"/><path d="M8 13.5l1.8 1.8L13 12"/></g></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 3.6a5 5 0 0 0-5.7 6.6L3.6 15.4a2 2 0 0 0 2.9 2.9l5.2-5.2a5 5 0 0 0 6.6-5.7l-2.9 2.9-2.6-.4-.4-2.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-az" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 15.5 7 5.5l3.5 10M4.8 12h4.4"/><path d="M13.5 6h6l-6 9.5h6"/><path d="M5 19.5h14"/></g></symbol>
+    <symbol id="i-standards" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9.5" r="5.5"/><path d="M9.6 9.6l1.6 1.6 3.2-3.2"/><path d="M8.6 14l-1.6 6.5 5-2.5 5 2.5-1.6-6.5"/></g></symbol>
+    <symbol id="i-focus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5V6a2 2 0 0 1 2-2h2.5M15.5 4H18a2 2 0 0 1 2 2v2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M8.5 20H6a2 2 0 0 1-2-2v-2.5"/><rect x="8" y="8.5" width="8" height="7" rx="1.6"/></g></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5S9.6 5.8 12 3.5z"/></g></symbol>
+    <symbol id="i-timeline" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 19.5l5-6 4 3 7.5-10"/><path d="M15.5 6.5H20V11"/></g></symbol>
+    <symbol id="i-fullscreen" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></g></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4H20v5.5M9.5 20H4v-5.5M20 4l-6.5 6.5M4 20l6.5-6.5"/></g></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.3 0 1.9-.8 1.9-1.7 0-1.3-1.1-1.6-1.1-2.7 0-1 .8-1.6 1.8-1.6h2.2a3.7 3.7 0 0 0 3.7-3.7C20.5 6.9 16.7 3.5 12 3.5z"/><circle cx="7.6" cy="11.6" r="1" fill="currentColor"/><circle cx="9.6" cy="7.6" r="1" fill="currentColor"/><circle cx="14.2" cy="7.4" r="1" fill="currentColor"/></g></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 3.8l8.5 7.2"/><path d="M5.8 9.2V20h4.4v-5.6h3.6V20h4.4V9.2"/></g></symbol>
+    <symbol id="i-library" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3.5" y="4" width="4.5" height="16" rx="1"/><rect x="9.5" y="4" width="4.5" height="16" rx="1"/><path d="m16 5.2 3.6-1 3 15.2-3.6.9z" transform="translate(-1.6 .4)"/></g></symbol>
+    <symbol id="i-theory" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 20.5h17M3.5 20.5V3.5"/><path d="M4 20c6-.6 11-4.3 15-14" stroke-width="2"/><path d="M4 20c6-.4 9.5-2.6 12.5-7.5" opacity=".55"/></g></symbol>
+    <symbol id="i-chillers" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 2.5v19M3.8 7.25l16.4 9.5M3.8 16.75l16.4-9.5"/><path d="m9.6 4.4 2.4 2.1 2.4-2.1M9.6 19.6l2.4-2.1 2.4 2.1"/></g></symbol>
+    <symbol id="i-ahu" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 8h11.5a3 3 0 1 0-3-3"/><path d="M3 12h16a3 3 0 1 1-3 3"/><path d="M3 16h7.5a2.5 2.5 0 1 1-2.5 2.5"/></g></symbol>
+    <symbol id="i-fcu" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1.6"/><path d="M12 10.4c-.3-2.6.4-4.6 2.6-5.2 1.6-.4 2.4 1.4 1.1 2.6-1 1-2.3 1.7-3.7 2.6zM13.4 12.8c2.4 1 3.8 2.6 3.2 4.8-.5 1.6-2.4 1.4-2.8-.3-.3-1.4-.3-2.8-.4-4.5zM10.6 12.8c-2.1 1.6-4.1 2-5.7.4-1.2-1.2-.1-2.8 1.6-2.3 1.4.4 2.6 1.1 4.1 1.9z"/></g></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10 5 6.5 4.5 3.5 5v13c3-.5 6.5 0 8.5 1.5 2-1.5 5.5-2 8.5-1.5V5c-3-.5-6.5 0-8.5 1.5z"/><path d="M12 6.5v13"/></g></symbol>
+    <symbol id="i-systems" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1.5"/><circle cx="4.5" cy="4.5" r="2"/><circle cx="19.5" cy="4.5" r="2"/><circle cx="4.5" cy="19.5" r="2"/><circle cx="19.5" cy="19.5" r="2"/><path d="M6 6l3 3M18 6l-3 3M6 18l3-3M18 18l-3-3"/></g></symbol>
+    <symbol id="i-notebook" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h11a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H6z"/><path d="M6 3.5v17M4 7.5h4M4 12h4M4 16.5h4"/><path d="m11 13.5 4.5-4.5 1.5 1.5-4.5 4.5H11z"/></g></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></g></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 4.5 7.5 12l7.5 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-contents" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M8.5 6.5h12M8.5 12h12M8.5 17.5h12"/><circle cx="4.5" cy="6.5" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="17.5" r=".6" fill="currentColor"/></g></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9H6.5A1.5 1.5 0 0 0 5 10.5v9A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 17.5 9H16"/><path d="M12 14.5V2.5M8 6.5l4-4 4 4"/></g></symbol>
+    <symbol id="i-plus-square" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12 8v8M8 12h8"/></g></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h14v10.5l-5 4.5H5z"/><path d="M14 19.5V15h5M8.5 9h7M8.5 12.5h4"/></g></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5V5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 5v9A1.5 1.5 0 0 0 5 15.5h3.5"/></g></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16M9.5 6.5V4h5v2.5M6 6.5l1 14h10l1-14M10 10.5v6M14 10.5v6"/></g></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v12M7.5 11l4.5 4.5 4.5-4.5M4.5 20.5h15"/></g></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5V3.5M7.5 8 12 3.5 16.5 8M4.5 20.5h15"/></g></symbol>
+  </svg>
+</body>
+</html>

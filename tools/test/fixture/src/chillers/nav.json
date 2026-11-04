@@ -1,0 +1,4 @@
+[
+ { "slug": "test-wall", "title": "Invented wall page", "summary": "Explore widget with invented data.", "updated": "2026-11-04" },
+ { "slug": "terms", "title": "Invented terms", "summary": "Test dictionary.", "updated": "2026-11-04", "layout": "cards" }
+]

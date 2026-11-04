@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-loading>
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cykpvtekrdfmqimtrcps.supabase.co; connect-src 'self' https://cykpvtekrdfmqimtrcps.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publish - HVAC Notes - DAME HUB</title>
+<link rel="stylesheet" href="/dame-hub/core/v1/theme.css">
+<link rel="stylesheet" href="/hvac-notes/assets/css/hn-publish.css">
+<link rel="icon" href="/dame-hub/core/v1/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/dame-hub/core/v1/icons/apple-touch-icon.png">
+<script src="/dame-hub/core/v1/config.js" defer></script>
+<script src="/dame-hub/core/v1/api.js" defer></script>
+<script src="/dame-hub/core/v1/core.js" defer></script>
+<script src="/hvac-notes/vendor/dompurify/purify.min.js" defer></script>
+<script src="/hvac-notes/assets/js/hn-dom.js" defer></script>
+<script src="/hvac-notes/assets/js/indexer.js" defer></script>
+<script src="/hvac-notes/assets/js/lint.js" defer></script>
+<script src="/hvac-notes/assets/js/hn-expr.js" defer></script>
+<script src="/hvac-notes/assets/js/widgets.js" defer></script>
+<script src="/hvac-notes/assets/js/hn-zip.js" defer></script>
+<script src="/hvac-notes/assets/js/publish.js" defer></script>
+</head>
+<body>
+<header id="topbar"></header>
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Publish</h1>
+      <p class="muted">HVAC Notes: upload pages, check them, and publish them to everyone who has the tile.</p>
+    </div>
+    <a class="btn" href="/hvac-notes/">Open the reader</a>
+  </div>
+
+  <div class="card" id="lib"></div>
+
+  <div class="card">
+    <h2>Upload pages</h2>
+    <p class="muted">A zip or a folder that holds notebook folders (theory, chillers, ahu, fcu, systems, ashrae), each with its <span class="mono">nav.json</span>, its pages (<span class="mono">&lt;slug&gt;.md</span>) and an <span class="mono">images/</span> folder, plus <span class="mono">CREDITS.md</span>. Pages you leave out stay as they are; a page its notebook's new <span class="mono">nav.json</span> no longer lists is removed.</p>
+    <div class="row">
+      <label class="btn primary" for="zip">Choose a zip</label>
+      <input type="file" id="zip" accept=".zip,application/zip" hidden>
+      <label class="btn" for="dir">Choose a folder</label>
+      <input type="file" id="dir" webkitdirectory multiple hidden>
+    </div>
+    <label class="check hp-whole"><input type="checkbox" id="whole"> This is the whole library: remove published pages and images it does not have</label>
+    <p class="hint">Nothing is published until you check the result below and press Publish.</p>
+  </div>
+
+  <div class="card" id="review" hidden></div>
+</main>
+</body>
+</html>

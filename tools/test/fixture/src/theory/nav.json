@@ -1,0 +1,4 @@
+[
+ { "slug": "test-basics", "title": "Test basics", "summary": "An invented page for the browser test.", "updated": "2026-11-04", "group": "Test", "keywords": ["TQX", "test quantity"] },
+ { "slug": "test-second", "title": "Second test page", "summary": "Another invented page.", "updated": "2026-11-04", "prereq": ["theory/test-basics"] }
+]

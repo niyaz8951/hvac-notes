@@ -1,0 +1,128 @@
+// Browser test for HVAC Notes (test harness only). Needs tools/test/mock.mjs running on :8080 over a database built by
+// tools/test/db.sh, and the invented library zipped at $FIXTURE (tools/test/run.sh does all of it).
+// Publishes the invented library as demo_admin, reads it as demo_user, checks refusals for demo_none and for a reader on
+// the Publish page, and fails on any console error or Content Security Policy report.
+import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+const require = createRequire(process.env.PLAYWRIGHT_ROOT ? process.env.PLAYWRIGHT_ROOT.replace(/\/?$/, '/') : import.meta.url);
+const { chromium } = require('playwright');
+
+const BASE = 'http://localhost:8080';
+const FIXTURE = process.env.FIXTURE;
+const PG = (process.env.PGARGS || '-h /tmp -p 5499 -U postgres -d hvac').split(' ');
+const sql = q => execFileSync('psql', [...PG, '-At', '-c', q], { encoding: 'utf8' }).trim();
+let failed = 0;
+const ok = (cond, what) => { console.log(`${cond ? '  ok ' : '  FAIL'} ${what}`); if (!cond) failed++; };
+
+const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined });
+async function session(user, scheme = 'light', width = 1280) {
+  const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme, acceptDownloads: true });
+  const page = await ctx.newPage();
+  page.problems = [];
+  await page.addInitScript(() => document.addEventListener('securitypolicyviolation', e => console.error('CSP ' + e.violatedDirective)));
+  page.on('console', m => { if (m.type() === 'error' && !/status of 400|status of 401|status of 403/.test(m.text())) page.problems.push(m.text()); });
+  page.on('pageerror', e => page.problems.push(e.message));
+  await page.goto(BASE + '/dame-hub/');
+  await page.fill('#si-email', user + '@example.com'); await page.fill('#si-pass', 'DemoPass2026');
+  await Promise.all([page.waitForURL(/dashboard/), page.click('#signin button[type=submit]')]);
+  return page;
+}
+const text = async (page, sel) => (await page.textContent(sel) || '').replace(/\s+/g, ' ');
+
+// 1. the editor publishes the invented library
+const admin = await session('demo_admin');
+await admin.goto(BASE + '/hvac-notes/publish.html');
+await admin.waitForSelector('#lib .badge');
+await admin.setInputFiles('#zip', FIXTURE);
+await admin.waitForSelector('#publish');
+ok(/Pages added \(4\)/i.test(await text(admin, '#review')), 'publish plan lists 4 new pages');
+ok(/No errors/.test(await text(admin, '#review')), 'invented library passes the check');
+await admin.click('#publish'); await admin.click('.sheet .actions button.primary');
+await admin.waitForFunction(() => /Version 1/.test(document.querySelector('#lib').textContent), null, { timeout: 20000 });
+ok(sql("select version from hvac_notes.library") === '1', 'library is at version 1');
+ok(sql("select count(*) from storage.objects where bucket_id = 'hvac-notes'") === '3', 'bucket holds the image, the index and the timeline');
+// export, then the same zip again: nothing to publish
+const [dl] = await Promise.all([admin.waitForEvent('download'), admin.click('#export')]);
+const back = FIXTURE.replace(/\.zip$/, '-export.zip'); await dl.saveAs(back);
+await admin.setInputFiles('#zip', back);
+await admin.waitForSelector('#review .notice');
+ok(/Nothing to publish/.test(await text(admin, '#review')), 'the export uploaded again changes nothing');
+ok(admin.problems.length === 0, 'Publish page: no console errors or CSP reports' + (admin.problems.length ? ': ' + admin.problems.join(' | ') : ''));
+
+// 2. a reader
+const user = await session('demo_user', 'dark');
+await user.goto(BASE + '/hvac-notes/');
+await user.waitForSelector('.shelf .book-item');
+ok((await user.$$('.shelf .book-item')).length === 6, 'home shows the six notebook covers');
+await user.goto(BASE + '/hvac-notes/#/theory/test-basics');
+await user.waitForSelector('#book .katex');
+await user.waitForFunction(() => { const i = document.querySelector('#book figure img'); return i && i.src.startsWith('blob:') && i.complete; }, null, { timeout: 10000 });
+ok(true, 'page renders maths and loads its image from the private bucket');
+ok(await user.$eval('#book', b => !b.querySelector('[style*="url("], script, iframe')), 'no script, iframe or style url in the page');
+await user.fill('.w-prac input', '6'); await user.click('.w-prac ~ .w-bar .w-primary');
+ok((await text(user, '.w-mark')).includes('✓'), 'practice problem: formula evaluated without eval, answer marked right');
+ok((await user.$$('details.hn-check')).length === 1, 'Check yourself question shown');
+await user.click('.src-ref button'); await user.waitForSelector('#sheet:not([hidden]) .src-peek');
+ok(/Invented for testing/.test(await text(user, '.src-peek')), 'source reference opens its Sources item');
+await user.click('#sheet [data-close]');
+// a highlight
+await user.evaluate(() => { const p = document.querySelector('#book > p:not(.page-meta)'); const t = p.firstChild; const r = document.createRange(); r.setStart(t, 0); r.setEnd(t, 14); getSelection().removeAllRanges(); getSelection().addRange(r); });
+await user.waitForSelector('#hl-bar:not([hidden])'); await user.click('#hl-bar .swatch[data-c="blue"]');
+await user.waitForTimeout(800);
+ok(sql("select count(*) from hvac_notes.highlights h join core.profiles p on p.id = h.user_id where p.username = 'demo_user' and h.color = 'blue'") === '1', 'highlight saved for this reader');
+// the second page: video card, prereq link
+await user.goto(BASE + '/hvac-notes/#/theory/test-second');
+await user.waitForSelector('#book .video-card');
+ok(await user.$eval('#book .video-card', a => a.target === '_blank' && /^https:\/\/www\.youtube\.com\/watch\?v=aaaaaaaaaaa&t=90s$/.test(a.href)), 'YouTube link is a card that opens YouTube in a new tab');
+ok(!(await user.$('iframe')), 'no iframe anywhere');
+// explore widget with figures from the page
+await user.goto(BASE + '/hvac-notes/#/chillers/test-wall');
+await user.waitForSelector('.w-readout');
+ok(/Invented rule when the wall is lower/.test(await text(user, '.widget')), 'explore widget is tile code and reads its figures from the page');
+await user.click('#book a[href="#/chillers/terms/zeta-unit"]');
+await user.waitForSelector('#sheet:not([hidden]) .kcard');
+ok(/invented unit/.test(await text(user, '#sheet')), 'a link to a card opens the card in place');
+await user.click('#sheet [data-close]');
+// search
+await user.keyboard.press('/'); await user.fill('#search-input', 'tqx');
+await user.waitForSelector('#search-results a');
+ok(/Test basics/.test(await text(user, '#search-results')), 'search finds a page by its keyword');
+await user.keyboard.press('Escape');
+await user.goto(BASE + '/hvac-notes/#/terms');
+await user.waitForSelector('.az-tiles li');
+ok((await user.$$('.az-tiles li')).length === 2, 'All Terms lists the dictionary cards');
+await user.goto(BASE + '/hvac-notes/#/timeline');
+await user.waitForSelector('.tl-stats');
+ok(true, 'timeline view opens');
+await user.waitForTimeout(3000);
+ok(+sql("select count(*) from hvac_notes.positions x join core.profiles p on p.id = x.user_id where p.username = 'demo_user'") >= 2, 'reading positions saved');
+const wide = await user.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+ok(wide, 'no sideways scroll');
+// a reader cannot publish
+await user.goto(BASE + '/hvac-notes/publish.html');
+await user.waitForSelector('.state h2');
+ok(/Nothing here/.test(await text(user, 'main')), 'a reader gets "Nothing here" on the Publish page');
+const refused = await user.evaluate(async () => { try { await Api.rpc('hvac_notes_publish_export'); return 'allowed'; } catch (e) { return e.code; } });
+ok(refused === 'NO_RIGHT', 'publish functions refuse a reader (NO_RIGHT)');
+ok(user.problems.length === 0, 'reader: no console errors or CSP reports' + (user.problems.length ? ': ' + user.problems.join(' | ') : ''));
+
+// 3. phone width
+const phone = await session('demo_user', 'light', 390);
+await phone.goto(BASE + '/hvac-notes/#/theory/test-basics');
+await phone.waitForSelector('#book .katex');
+ok(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'phone width 390 px: no sideways scroll');
+
+// 4. no tile
+const none = await session('demo_none');
+await none.goto(BASE + '/hvac-notes/');
+await none.waitForSelector('.state h2');
+ok(/Nothing here/.test(await text(none, 'main')), 'a user without the tile gets "Nothing here"');
+const r1 = await none.evaluate(async () => { try { await Api.rpc('hvac_notes_page', { p_tab: 'theory', p_slug: 'test-basics' }); return 'allowed'; } catch (e) { return e.code; } });
+const r2 = await none.evaluate(async () => { try { await Api.file.download('hvac-notes', 'theory/images/test-diagram.svg'); return 'allowed'; } catch (e) { return e.code; } });
+ok(r1 === 'NO_ACCESS' && r2 !== 'allowed', `a user without the tile cannot read pages (${r1}) or images (${r2})`);
+
+await browser.close();
+await fs.rm(back, { force: true });
+console.log(failed ? `${failed} CHECK(S) FAILED` : 'ALL BROWSER CHECKS PASSED');
+process.exit(failed ? 1 : 0);
