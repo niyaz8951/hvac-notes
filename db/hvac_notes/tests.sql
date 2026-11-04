@@ -188,6 +188,16 @@ begin
      or v -> 'cards' -> 0 ->> 'by' <> 'Demo User' or v -> 'cards' -> 0 ->> 'key' <> 'theory/terms/kw' or (v -> 'cards' -> 0) ? 'color' then
     raise exception 'shared for admin %', v;
   end if;
+  -- names come from the core: a renamed author shows his new name at once
+  reset role;
+  update core.profiles set display_name = 'Demo User Renamed' where username = 'demo_user';
+  perform pg_temp.act_as('demo_admin');
+  select public.hvac_notes_shared() into v;
+  if v -> 'cards' -> 0 ->> 'by' <> 'Demo User Renamed' then raise exception 'name not from core: %', v -> 'cards' -> 0; end if;
+  reset role;
+  update core.profiles set display_name = 'Demo User' where username = 'demo_user';
+  perform pg_temp.act_as('demo_admin');
+  select public.hvac_notes_shared() into v;
   -- he answers the reader's highlight and card note
   perform public.hvac_notes_reply_save('highlight', 'abc123', 'An answer from the admin');
   perform public.hvac_notes_reply_save('card', v -> 'cards' -> 0 ->> 'id', 'Card answer');

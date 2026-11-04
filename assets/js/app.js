@@ -371,17 +371,29 @@
         if (img.title) { const c = document.createElement('figcaption'); c.textContent = img.title; fig.appendChild(c); img.removeAttribute('title'); }
       }
     });
-    // A YouTube link on a line of its own: a card that opens the video on YouTube (no player on this site).
+    // A YouTube link on a line of its own: a card; a tap loads YouTube's privacy-mode player in place (docs/SECURITY.md
+    // section 4: nothing loads from YouTube before the tap, the address is built here from the checked id, the frame is
+    // sandboxed, and a "Watch on YouTube" link is always shown).
     el.querySelectorAll('p').forEach(p => {
       const a = p.children.length === 1 && p.firstElementChild.tagName === 'A' && p.textContent.trim() === p.firstElementChild.textContent.trim() ? p.firstElementChild : null;
       const yt = a && youtube(a.getAttribute('href'));
       if (!yt) return;
       const text = a.textContent.trim(), name = /^https?:/.test(text) ? 'Video' : text;
       const url = `https://www.youtube.com/watch?v=${yt.id}${yt.start ? '&t=' + yt.start + 's' : ''}`;
-      p.replaceWith(html`<figure class="video no-hl"><a class="video-card" href="${url}" target="_blank" rel="noopener noreferrer">
+      const fig = one(html`<figure class="video no-hl"><button class="video-card" type="button" aria-label="Play ${name}">
           <span class="video-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"></path></svg></span>
-          <span class="video-text"><span class="video-name">${name}</span><span class="video-sub">Watch on YouTube${yt.start ? ' from ' + clock(yt.start) : ''}</span></span>
-          ${icon('i-chevron')}</a>${a.title ? html`<figcaption>${a.title}</figcaption>` : ''}</figure>`);
+          <span class="video-text"><span class="video-name">${name}</span><span class="video-sub">Play here${yt.start ? ' from ' + clock(yt.start) : ''}</span></span></button>
+          <a class="video-link" href="${url}" target="_blank" rel="noopener noreferrer">Watch on YouTube${icon('i-chevron')}</a>
+          ${a.title ? html`<figcaption>${a.title}</figcaption>` : ''}</figure>`);
+      fig.querySelector('.video-card').onclick = () => {
+        if (!/^[A-Za-z0-9_-]{11}$/.test(yt.id)) return;
+        const start = Math.max(0, Math.floor(+yt.start || 0));
+        const src = `https://www.youtube-nocookie.com/embed/${yt.id}?rel=0&playsinline=1&autoplay=1${start ? '&start=' + start : ''}`;
+        fig.querySelector('.video-card').replaceWith(one(html`<div class="video-frame"><iframe src="${src}" title="${name}" loading="lazy"
+          sandbox="allow-scripts allow-same-origin allow-presentation allow-popups" allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>`));
+      };
+      p.replaceWith(fig);
     });
     el.querySelectorAll('a[href]').forEach(a => {
       const h = a.getAttribute('href');

@@ -1,6 +1,7 @@
 # Core requests - hvac-notes
 
 ## Open
-- 2026-11-04 - Need `core.display_names(ids uuid[])` to show the current name of who wrote a highlight or note. Why: shared notes. Blocking: no (the author's display name is saved with each note and refreshed when he next opens the tile).
 
 ## Done
+- 2026-11-04 - `core.display_names(p_tile, p_ids)` for the current name of who wrote a highlight, note or reply - `db/core/006_display_names.sql`, used by `003_names.sql`.
+- 2026-11-04 - Embedded YouTube player - allowed for this tile on the conditions in `docs/SECURITY.md` section 4.

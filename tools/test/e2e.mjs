@@ -79,8 +79,11 @@ ok(sql("select author || '|' || note from hvac_notes.highlights h join core.prof
 // the second page: video card, prereq link
 await user.goto(BASE + '/hvac-notes/#/theory/test-second');
 await user.waitForSelector('#book .video-card');
-ok(await user.$eval('#book .video-card', a => a.target === '_blank' && /^https:\/\/www\.youtube\.com\/watch\?v=aaaaaaaaaaa&t=90s$/.test(a.href)), 'YouTube link is a card that opens YouTube in a new tab');
-ok(!(await user.$('iframe')), 'no iframe anywhere');
+ok(await user.$eval('#book .video-link', a => a.target === '_blank' && /^https:\/\/www\.youtube\.com\/watch\?v=aaaaaaaaaaa&t=90s$/.test(a.href)), 'video card has a "Watch on YouTube" link');
+ok(!(await user.$('iframe')), 'nothing loads from YouTube before the tap');
+await user.route('https://www.youtube-nocookie.com/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<p>stub</p>' }));
+await user.click('#book .video-card'); await user.waitForSelector('#book iframe');
+ok(await user.$eval('#book iframe', f => f.src === 'https://www.youtube-nocookie.com/embed/aaaaaaaaaaa?rel=0&playsinline=1&autoplay=1&start=90' && f.getAttribute('sandbox') === 'allow-scripts allow-same-origin allow-presentation allow-popups' && f.getAttribute('referrerpolicy') === 'strict-origin-when-cross-origin'), 'the tap loads the privacy-mode player with the checked id, sandboxed');
 // explore widget with figures from the page
 await user.goto(BASE + '/hvac-notes/#/chillers/test-wall');
 await user.waitForSelector('.w-readout');
