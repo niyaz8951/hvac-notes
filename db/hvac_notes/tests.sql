@@ -1,4 +1,4 @@
--- HVAC Notes tile tests. Run on STAGING after db/core/seed-staging.sql and db/hvac_notes/001_init.sql. Everything is rolled back.
+-- HVAC Notes tile tests. Run on STAGING after db/core/seed-staging.sql and every db/hvac_notes/0*.sql file. Everything is rolled back.
 -- Needs: the tile 'hvac-notes' registered with the right 'edit' (admin page; it may stay off), and the demo accounts.
 -- Inside the transaction (then rolled back) it gives demo_admin the tile with 'edit', demo_user the tile without rights,
 -- and disables demo_none for one check. For every function: an allowed call, and refused calls for signed out,
@@ -65,7 +65,9 @@ declare v jsonb; n int; v_ver int;
     'select public.hvac_notes_publish_export()',
     'select public.hvac_notes_publish_commit(0, ''{}''::jsonb, ''[]''::jsonb, ''{}'', ''[]''::jsonb, ''{}'', null, ''_library/index-a.json'', ''_library/growth-a.json'')',
     'select public.hvac_notes_shared()',
-    'select public.hvac_notes_card_remove(1)'];
+    'select public.hvac_notes_card_remove(1)',
+    'select public.hvac_notes_reply_save(''highlight'', ''abc123'', ''x'')',
+    'select public.hvac_notes_reply_delete(1)'];
   publish constant text[] := array[calls[11], calls[12], calls[14]];
   c text;
 begin
@@ -186,6 +188,13 @@ begin
      or v -> 'cards' -> 0 ->> 'by' <> 'Demo User' or v -> 'cards' -> 0 ->> 'key' <> 'theory/terms/kw' or (v -> 'cards' -> 0) ? 'color' then
     raise exception 'shared for admin %', v;
   end if;
+  -- he answers the reader's highlight and card note
+  perform public.hvac_notes_reply_save('highlight', 'abc123', 'An answer from the admin');
+  perform public.hvac_notes_reply_save('card', v -> 'cards' -> 0 ->> 'id', 'Card answer');
+  perform pg_temp.expect_error($q$select public.hvac_notes_reply_save('highlight', 'nothere', 'x')$q$, 'NOT_FOUND');
+  perform pg_temp.expect_error($q$select public.hvac_notes_reply_save('card', '999999', 'x')$q$, 'NOT_FOUND');
+  perform pg_temp.expect_error($q$select public.hvac_notes_reply_save('highlight', 'abc123', '  ')$q$, 'INVALID:body');
+  perform pg_temp.expect_error($q$select public.hvac_notes_reply_save('other', 'abc123', 'x')$q$, 'INVALID:kind');
   -- he cannot take over the reader's highlight; he saves his own
   perform pg_temp.expect_error($q$select public.hvac_notes_highlight_save('abc123', 'theory', 'example', '', 'pink', '', '{"exact": "his own"}'::jsonb)$q$, 'INVALID:id');
   perform public.hvac_notes_highlight_save('adm001', 'theory', 'example', '', 'pink', 'admin note', '{"exact": "his own"}'::jsonb);
@@ -200,8 +209,17 @@ begin
      or jsonb_array_length(v -> 'cards') <> 1 or v -> 'cards' -> 0 ->> 'note' <> 'admin card note' then raise exception 'shared for reader %', v; end if;
   perform pg_temp.expect_error($q$select public.hvac_notes_highlight_delete('adm001')$q$, 'NOT_FOUND');
   perform pg_temp.expect_error(format('select public.hvac_notes_card_remove(%s)', v -> 'cards' -> 0 ->> 'id'), 'NO_RIGHT');
+  -- the replies on his notes, with the author's name; he replies back, deletes his own, cannot delete the admin's
+  if jsonb_array_length(v -> 'replies') <> 2 or not exists (select 1 from jsonb_array_elements(v -> 'replies') x where x ->> 'by' = 'Demo Admin' and x ->> 'ref' = 'abc123' and (x ->> 'mine')::boolean = false) then
+    raise exception 'replies for reader %', v -> 'replies'; end if;
+  select public.hvac_notes_reply_save('highlight', 'abc123', 'Thanks') into v;
+  perform public.hvac_notes_reply_delete((v ->> 'id')::bigint);
+  perform pg_temp.expect_error(format('select public.hvac_notes_reply_delete(%s)', v ->> 'id'), 'NOT_FOUND');
+  select public.hvac_notes_shared() into v;
+  perform pg_temp.expect_error(format('select public.hvac_notes_reply_delete(%s)', (select x ->> 'id' from jsonb_array_elements(v -> 'replies') x where x ->> 'by' = 'Demo Admin' limit 1)), 'NOT_FOUND');
   perform public.hvac_notes_highlight_delete('abc123');
   perform pg_temp.expect_error($q$select public.hvac_notes_highlight_delete('abc123')$q$, 'NOT_FOUND');
+  select count(*) into n from jsonb_array_elements((public.hvac_notes_shared()) -> 'replies') x where x ->> 'ref' = 'abc123'; if n <> 0 then raise exception 'replies kept after delete %', n; end if;
   select count(*) into n from jsonb_array_elements((public.hvac_notes_my_data()) -> 'highlights'); if n <> 1 then raise exception 'after delete %', n; end if;
   reset role;
 
@@ -212,7 +230,7 @@ begin
   perform public.hvac_notes_card_remove((v -> 'cards' -> 0 ->> 'id')::bigint);
   perform pg_temp.expect_error(format('select public.hvac_notes_card_remove(%s)', v -> 'cards' -> 0 ->> 'id'), 'NOT_FOUND');
   select public.hvac_notes_shared() into v;
-  if jsonb_array_length(v -> 'highlights') <> 0 or jsonb_array_length(v -> 'cards') <> 0 then raise exception 'after removal %', v; end if;
+  if jsonb_array_length(v -> 'highlights') <> 0 or jsonb_array_length(v -> 'cards') <> 0 or jsonb_array_length(v -> 'replies') <> 0 then raise exception 'after removal %', v; end if;
   select count(*) into n from jsonb_array_elements((public.hvac_notes_my_data()) -> 'highlights'); if n <> 1 then raise exception 'admin highlight kept %', n; end if;
   reset role;
   select count(*) into n from core.audit where tile_id = 'hvac-notes' and action = 'note_removed'; if n <> 2 then raise exception 'removal audit %', n; end if;
@@ -237,6 +255,7 @@ begin
   perform pg_temp.act_as('demo_admin');
   perform pg_temp.expect_error('select count(*) from hvac_notes.pages', 'PERMISSION');
   perform pg_temp.expect_error('select count(*) from hvac_notes.highlights', 'PERMISSION');
+  perform pg_temp.expect_error('select count(*) from hvac_notes.replies', 'PERMISSION');
   reset role;
 
   select count(*) into n from core.audit where tile_id = 'hvac-notes' and action = 'publish'; if n < 2 then raise exception 'audit %', n; end if;

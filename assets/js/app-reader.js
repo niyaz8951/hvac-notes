@@ -9,7 +9,7 @@
     paintCard, openCard, enhance, fieldItem, markWide, loadImages, applySettings, updateThemeColor, backBtn, searchBtn, focusBtn,
     setNav, watchLargeTitle, renderTabbar, where, setActive, canPublish, renderSidebar, coverArt, getIndex, pageOf, aliasMap,
     migrateAliases, routeOf, relatedOf, reviewPool, dueOf, changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY,
-    hlsOf, progressOf, saveReview, savePractice, othersOn, cardOthers, cardNotes, noteBy, otherNotes } = A;
+    hlsOf, progressOf, saveReview, savePractice, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, discussions } = A;
   const m = () => A.mine();
   const setTitle = t => Core.setTitle(t ? `${t} · ${SITE}` : SITE);
   const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
@@ -177,6 +177,26 @@
     render(main, html`<div class="hn-page"><h1 class="large-title">Highlights &amp; Notes</h1><p class="subtitle">${t.name}</p>${who}
       ${keys.length || cards.length ? [body, cardsBox] : html`<div class="empty"><strong>No Highlights</strong></div>`}</div>`);
     main.querySelectorAll('#seg-who button').forEach(b => b.onclick = () => { nbWho = b.dataset.v; viewNotebook(tab); });
+    watchLargeTitle();
+  }
+
+  let dsFilter = 'open';     // 'open' = notes without an answer from someone else, 'all'
+  function viewDiscussions() {
+    setActive('discussions', null, null);
+    setTitle('Discussions');
+    setNav({ left: backBtn('#/', 'Home'), title: 'Discussions', right: searchBtn() });
+    const all = discussions().filter(x => x.note || x.replies.length);
+    const list = dsFilter === 'open' ? all.filter(x => !x.answered) : all;
+    const seg = html`<div class="seg gap-b" id="seg-ds"><button type="button" data-v="open" aria-pressed="${dsFilter === 'open'}">Unanswered</button>
+      <button type="button" data-v="all" aria-pressed="${dsFilter === 'all'}">All</button></div>`;
+    const item = x => html`<a class="nb-item ds-item" href="${x.href}" data-c="${x.color || ''}">
+      <div class="ds-head"><span class="ds-page">${TAB[x.tab] ? TAB[x.tab].name : x.tab} · ${x.title}</span>${x.answered ? html`<span class="ds-tag ok">Answered</span>` : x.note ? html`<span class="ds-tag">Open</span>` : ''}</div>
+      ${x.kind === 'highlight' ? html`<div class="nb-quote">${x.text}</div>` : ''}
+      ${x.note ? html`<div class="nb-note">${icon('i-note')}<span>${x.note}</span></div>` : ''}
+      <div class="nb-date">${x.by} · ${fmtDate(x.at)}${x.replies.length ? ` · ${plural(x.replies.length, 'reply', 'replies')}, last by ${x.replies[x.replies.length - 1].by}` : ''}</div></a>`;
+    render(main, html`<div class="hn-page"><h1 class="large-title">Discussions</h1><p class="subtitle">Questions and notes from the team, with answers</p>${seg}
+      ${list.length ? html`<div class="group">${list.map(item)}</div>` : html`<div class="empty"><strong>${dsFilter === 'open' ? 'Nothing Unanswered' : 'No Discussions Yet'}</strong><span>Highlight a sentence or open a card, write a note or question, and anyone can reply.</span></div>`}</div>`);
+    main.querySelectorAll('#seg-ds button').forEach(b => b.onclick = () => { dsFilter = b.dataset.v; viewDiscussions(); });
     watchLargeTitle();
   }
 
@@ -497,6 +517,7 @@
         <div class="fx-tools">
           <div class="fx-swatches" role="group" aria-label="Colour">${KCOLORS.map(([k, name]) => html`<button class="kswatch" type="button" data-fx="color" data-c="${k}" aria-pressed="${k === color}" aria-label="${name}" title="${name}"></button>`)}</div>
           <textarea class="fx-note" rows="2" placeholder="Note" aria-label="Note on ${c.title}"></textarea>
+          ${st.note && st.row ? [html`<p class="sheet-sec">Replies to your note</p>`, thread('card', st.row, () => repaintPageCard(c.key))] : ''}
           ${otherNotes(c.key, () => repaintPageCard(c.key))}
         </div>
       </div>${ctx(next, i + 1)}`);
@@ -1133,6 +1154,7 @@
       const mk = document.createElement('mark');
       mk.className = 'hl' + (other ? ' other' : '') + (h.note ? ' has-note' : '') + (isNew ? ' new' : '');
       mk.dataset.hl = h.id; mk.dataset.c = h.color;
+      const rc = replyCount('highlight', h.id); if (rc && i === segs.length - 1) mk.dataset.replies = rc;
       n.parentNode.insertBefore(mk, n); mk.appendChild(n);
     }
   }
@@ -1168,12 +1190,13 @@
     const book = $('#book');
     if (book && A.R) {
       const f = settings.mode === 'pages' ? fraction() : null;
-      unwrapMarks([...book.querySelectorAll('mark.hl.other')]);
-      applyOthers(book);
+      unwrapMarks([...book.querySelectorAll('mark.hl')]);
+      applyHighlights(book);
       book.querySelectorAll('.kcard').forEach(paintCard);
       if (f != null) layout(f);
     }
     if (where.view === 'notebook') viewNotebook(nbTab);
+    if (where.view === 'discussions') viewDiscussions();
   }
 
   function createHighlight(range, color) {
@@ -1217,13 +1240,22 @@
     }
   }, 120));
 
+  // The reply count on a highlight's mark, after a reply was added or removed.
+  function refreshMark(id) {
+    const marks = [...document.querySelectorAll(`mark.hl[data-hl="${CSS.escape(id)}"]`)];
+    marks.forEach(mk => delete mk.dataset.replies);
+    const n = replyCount('highlight', id);
+    if (n && marks.length) marks[marks.length - 1].dataset.replies = n;
+    renderSidebar();
+  }
   function openOtherHighlight(h) {
     openSheet(html`<div class="sheet-head"><span></span><h2>Highlight</h2><button class="link-btn" type="button" data-close>Done</button></div>
       <p class="sheet-by">${noteBy(h.by, h.updated || h.created)}</p>
       <blockquote class="sheet-quote" data-c="${h.color}">${h.quote.exact}</blockquote>
       ${h.note ? html`<p class="note-text other-text">${h.note}</p>` : ''}
       <div class="sheet-actions"><button class="btn" type="button" data-act="copy">${icon('i-copy')}Copy</button>
-      ${canPublish() ? html`<button class="btn danger" type="button" data-act="remove">${icon('i-trash')}Remove</button>` : ''}</div>`, body => {
+      ${canPublish() ? html`<button class="btn danger" type="button" data-act="remove">${icon('i-trash')}Remove</button>` : ''}</div>
+      <p class="sheet-sec">Replies</p>${thread('highlight', h.id, () => refreshMark(h.id))}`, body => {
       body.querySelector('[data-act="copy"]').onclick = () => copyText(`“${h.quote.exact}”${h.note ? `\nNote (${h.by}): ${h.note}` : ''}\n— ${h.title}, ${SITE}`);
       const rm = body.querySelector('[data-act="remove"]');
       if (rm) rm.onclick = async () => {
@@ -1244,7 +1276,8 @@
       <textarea class="note-input" id="note-input" placeholder="Note" aria-label="Note"></textarea>
       <p class="sheet-hint">Your highlight and note are seen by everyone with HVAC Notes.</p>
       <div class="sheet-actions"><button class="btn" type="button" data-act="copy">${icon('i-copy')}Copy</button>
-      <button class="btn danger" type="button" data-act="delete">${icon('i-trash')}Delete</button></div>`, body => {
+      <button class="btn danger" type="button" data-act="delete">${icon('i-trash')}Delete</button></div>
+      <p class="sheet-sec">Replies</p>${thread('highlight', h.id, () => refreshMark(h.id))}`, body => {
       const marks = () => document.querySelectorAll(`mark.hl[data-hl="${CSS.escape(id)}"]`);
       body.querySelectorAll('.swatch').forEach(b => b.onclick = () => {
         h.color = b.dataset.c; D.save.highlight(h);
@@ -1312,7 +1345,7 @@
         <span class="row-main"><span class="row-title">${h.textContent}</span></span>${pg(h)}</button>`)}</div>` : html`<div class="empty">No Sections</div>`;
     const hls = mine.length ? html`<div class="group">${mine.map(h => html`<button class="nb-item hn-row block" type="button" data-hl="${h.id}" data-c="${h.color}">
         <div class="nb-quote">${h.quote.exact}</div>${h.note ? html`<div class="nb-note">${icon('i-note')}<span>${h.note}</span></div>` : ''}
-        <div class="nb-date">${h.by} · ${fmtDate(h.created || h.updated)}</div></button>`)}</div>` : html`<div class="empty">No Highlights</div>`;
+        <div class="nb-date">${h.by} · ${fmtDate(h.created || h.updated)}${replyCount('highlight', h.id) ? ` · ${plural(replyCount('highlight', h.id), 'reply', 'replies')}` : ''}</div></button>`)}</div>` : html`<div class="empty">No Highlights</div>`;
     openSheet(html`<div class="sheet-head"><span></span><h2>${R.title}</h2><button class="link-btn" type="button" data-close>Done</button></div>
       <div class="seg gap-b" id="seg-pane"><button type="button" data-v="c" aria-pressed="true">Contents</button><button type="button" data-v="h" aria-pressed="false">Highlights${mine.length ? ` (${mine.length})` : ''}</button></div>
       <div id="pane-c">${contents}</div><div id="pane-h" hidden>${hls}</div>`, body => {
@@ -1622,6 +1655,7 @@
       else if (a === 'field') await viewField();
       else if (a === 'terms') await viewTerms();
       else if (a === 'timeline') await viewTimeline();
+      else if (a === 'discussions') viewDiscussions();
       else if (a === 'standards') await viewStandards();
       else if (!TAB[a]) viewMissing();
       else if (!b) await viewSection(a);

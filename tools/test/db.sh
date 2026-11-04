@@ -17,7 +17,7 @@ for f in "$DAME"/db/core/0*.sql; do q -f "$f" > /dev/null; done
 q -f "$DAME/db/core/seed-staging.sql" > /dev/null
 # The owner registers the tile in the admin page (Tiles > New tile): id, name, the right 'edit', switched on.
 q -c "insert into core.tiles (id, name, tagline, icon, sort_order, enabled, rights) values ('hvac-notes', 'HVAC Notes', 'Product and engineering notes', 'book', 20, true, array['edit'])" > /dev/null
-q -f db/hvac_notes/001_init.sql > /dev/null
+for f in db/hvac_notes/0*.sql; do q -f "$f" > /dev/null; done
 q -f db/hvac_notes/tests.sql 2>&1 | grep -E 'ERROR|PASSED|expected|CONTEXT' || true
 q -f tools/test/seed-local.sql > /dev/null
 echo "security_check:"; psql $PGARGS -At -c "select * from core.security_check()"

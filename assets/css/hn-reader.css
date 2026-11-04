@@ -951,3 +951,19 @@ mark.hl.other.has-note { text-decoration: underline solid color-mix(in srgb, var
 /* The core's dialogs and toasts sit above the reader's own sheets, focus mode and viewer */
 body.hn .sheet-back { z-index: 95; }
 body.hn #toasts { z-index: 96; }
+
+/* Replies (questions and answers under a note) */
+mark.hl[data-replies]::after { content: attr(data-replies); display: inline-block; vertical-align: super; margin-left: 2px; min-width: 14px; padding: 0 4px; border-radius: 7px; background: var(--tint); color: var(--on-brand); font: 700 10px/14px var(--ui); text-align: center; }
+.reply-n { display: inline-block; margin-left: 8px; min-width: 18px; padding: 0 6px; border-radius: 9px; background: var(--tint); color: var(--on-brand); font: 700 11px/18px var(--ui); text-align: center; }
+.thread { margin-top: 8px; }
+.reply { padding: 8px 10px 8px 12px; margin: 6px 0; border-left: 2px solid var(--sep); }
+.reply.mine { border-left-color: var(--tint); }
+.reply .note-text { font-size: 15px; }
+.reply-form { display: flex; gap: 8px; align-items: flex-end; margin-top: 6px; }
+.reply-input { min-height: 40px; flex: 1; font-size: 15px; padding: 9px 12px; }
+.btn.small, .link-btn.small { font-size: 13px; padding: 6px 12px; }
+.link-btn.small { padding: 2px 0; margin-top: 2px; }
+.ds-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 4px; }
+.ds-page { font: 600 13px var(--ui); color: var(--text2); }
+.ds-tag { flex: none; font: 600 11px/18px var(--ui); padding: 0 8px; border-radius: 9px; background: var(--fill); color: var(--text2); }
+.ds-tag.ok { background: color-mix(in srgb, var(--sw-green) 22%, transparent); color: var(--text); }

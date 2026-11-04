@@ -186,7 +186,7 @@
   const cardOthers = key => othersOn() ? (D.shared.cards[key] || []) : [];
   const cardNotes = key => {
     const st = cardState[key] || {};
-    return (st.note ? [{ by: 'You', note: st.note, updated: st.updated, mine: true }] : []).concat(cardOthers(key));
+    return (st.note ? [{ by: 'You', note: st.note, updated: st.updated, mine: true, id: st.row }] : []).concat(cardOthers(key));
   };
   const noteBy = (who, iso) => html`<span class="note-by">${who}${iso ? ` · ${fmtDate(iso)}` : ''}</span>`;
   function paintCard(card) {
@@ -194,15 +194,49 @@
     card.dataset.c = cardColor(key);
     card.querySelectorAll('.kcard-note').forEach(n => n.remove());
     const edit = card.querySelector('.kcard-edit');
-    cardNotes(key).forEach(x => card.insertBefore(one(html`<button class="kcard-note no-hl ${x.mine ? '' : 'other'}" type="button">${icon('i-note')}<span>${noteBy(x.by)}${x.note}</span></button>`), edit));
+    cardNotes(key).forEach(x => card.insertBefore(one(html`<button class="kcard-note no-hl ${x.mine ? '' : 'other'}" type="button">${icon('i-note')}<span>${noteBy(x.by)}${x.note}</span>${replyBadge(replyCount('card', x.id))}</button>`), edit));
   }
-  // Everyone else's notes on a card, in a sheet or focus mode; with 'edit', each can be removed.
+  // Replies under a note (questions and answers). kind 'highlight' + highlight id, or 'card' + card row id.
+  const replyCount = (kind, ref) => ref == null ? 0 : D.replies.of(kind, ref).length;
+  function thread(kind, ref, onChange) {
+    const box = document.createElement('div'); box.className = 'thread';
+    const draw = () => {
+      const list = ref == null ? [] : D.replies.of(kind, ref);
+      render(box, list.map(x => html`<div class="reply ${x.mine ? 'mine' : ''}">${noteBy(x.by, x.created)}<p class="note-text">${x.body}</p>
+          ${x.mine || canPublish() ? html`<button class="link-btn danger small" type="button" data-rm="${x.id}">Delete</button>` : ''}</div>`),
+        ref == null ? html`<p class="sheet-hint">Replies can be added once the note is saved.</p>`
+          : html`<form class="reply-form"><textarea class="note-input reply-input" rows="1" placeholder="${list.length ? 'Reply' : 'Reply or answer'}" aria-label="Reply" maxlength="5000"></textarea>
+            <button class="btn primary small" type="submit">Send</button></form>`);
+      box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+        if (!await Core.confirm('Delete this reply?', { ok: 'Delete', danger: true })) return;
+        try { await D.replies.remove(kind, ref, +b.dataset.rm); draw(); if (onChange) onChange(); } catch (err) { Core.showError(err); }
+      });
+      const form = box.querySelector('form');
+      if (form) {
+        const ta = form.querySelector('textarea');
+        ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); form.requestSubmit(); } });
+        form.onsubmit = async e => {
+          e.preventDefault();
+          const body = ta.value.trim(); if (!body) return;
+          form.querySelector('button').disabled = true;
+          try { await D.replies.add(kind, ref, body); draw(); if (onChange) onChange(); }
+          catch (err) { form.querySelector('button').disabled = false; Core.showError(err); }
+        };
+      }
+    };
+    draw();
+    return box;
+  }
+  const replyBadge = n => n ? html`<span class="reply-n" title="${n} ${n === 1 ? 'reply' : 'replies'}">${n}</span>` : '';
+
+  // Everyone else's notes on a card, in a sheet or focus mode; with 'edit', each can be removed. Each has its thread.
   function otherNotes(key, onChange) {
     const list = cardOthers(key);
     if (!list.length) return '';
     const box = one(html`<div class="other-notes"><p class="sheet-sec">From others</p>${list.map(x => html`<div class="other-note">
       ${noteBy(x.by, x.updated)}<p class="note-text">${x.note}</p>
-      ${canPublish() ? html`<button class="link-btn danger" type="button" data-rm="${x.id}">Remove</button>` : ''}</div>`)}</div>`);
+      ${canPublish() ? html`<button class="link-btn danger small" type="button" data-rm="${x.id}">Remove</button>` : ''}
+      ${thread('card', x.id, onChange)}</div>`)}</div>`);
     box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
       const x = list.find(n => String(n.id) === b.dataset.rm);
       if (!x || !await Core.confirm(`Remove ${x.by}'s note on this card? This cannot be undone.`, { ok: 'Remove', danger: true })) return;
@@ -219,6 +253,7 @@
       <div class="sheet-swatches kswatches" role="group" aria-label="Colour">${KCOLORS.map(([c, name]) => html`<button class="kswatch" type="button" data-c="${c}" aria-pressed="${c === cur}" aria-label="${name}" title="${name}"></button>`)}</div>
       <textarea class="note-input" id="card-note" placeholder="Note" aria-label="Note"></textarea>
       <p class="sheet-hint">Your note is seen by everyone with HVAC Notes. The colour is yours only.</p>
+      ${(cardState[key] || {}).note ? [html`<p class="sheet-sec">Replies to your note</p>`, thread('card', (cardState[key] || {}).row, () => paintCard(card))] : ''}
       ${otherNotes(key, () => paintCard(card))}`, body => {
       body.querySelectorAll('.kswatch').forEach(b => b.onclick = () => {
         Object.assign(cardEntry(key, title), { color: b.dataset.c, title, updated: new Date().toISOString() }); D.save.card(key, 0);
@@ -544,6 +579,20 @@
     renderSidebar();
   }
 
+  // Every note that can be discussed (mine and others'), newest activity first, with its replies.
+  function discussions() {
+    const out = [];
+    (highlights || []).forEach(h => out.push({ kind: 'highlight', ref: h.id, by: 'You', mine: true, tab: h.tab, slug: h.slug, title: h.title, text: h.quote.exact, note: h.note, color: h.color, href: `#/${h.tab}/${h.slug}/hl-${h.id}`, at: h.updated || h.created }));
+    Object.entries(cardState || {}).forEach(([key, c]) => { if (c.note && c.row) out.push({ kind: 'card', ref: c.row, by: 'You', mine: true, tab: c.tab, slug: c.slug, title: c.title, text: c.title, note: c.note, href: `#/${key}`, at: c.updated }); });
+    if (othersOn()) {
+      D.shared.highlights.forEach(h => out.push({ kind: 'highlight', ref: h.id, by: h.by, tab: h.tab, slug: h.slug, title: h.title, text: h.quote.exact, note: h.note, color: h.color, href: `#/${h.tab}/${h.slug}/hl-${h.id}`, at: h.updated || h.created }));
+      Object.entries(D.shared.cards).forEach(([key, list]) => list.forEach(c => out.push({ kind: 'card', ref: c.id, by: c.by, tab: key.split('/')[0], slug: key.split('/')[1], title: c.title, text: c.title, note: c.note, href: `#/${key}`, at: c.updated })));
+    }
+    out.forEach(x => { x.replies = D.replies.of(x.kind, x.ref); const last = x.replies[x.replies.length - 1]; x.last = last && last.created > x.at ? last.created : x.at; x.answered = x.replies.some(r => !(x.mine ? r.mine : r.by === x.by)); });
+    return out.sort((a, b) => String(b.last).localeCompare(String(a.last)));
+  }
+  const unansweredCount = () => discussions().filter(x => x.note && !x.answered).length;
+
   const canPublish = () => !!(Core.user && (Core.user.is_super || (Core.user.rights || []).indexOf('edit') >= 0));
 
   async function renderSidebar() {
@@ -561,6 +610,7 @@
       BOOKS.map(t => link(`#/${t.id}`, t.id, t.name, t.icon, tab === t.id, count(t))),
       html`<p class="side-label">Library</p>`,
       link('#/review', 'library', 'Review', 'i-review', view === 'review', '', 'it-review'),
+      link('#/discussions', 'library', 'Discussions', 'i-chat', view === 'discussions', unansweredCount() || '', 'it-notes'),
       link('#/timeline', 'library', 'Timeline', 'i-timeline', view === 'timeline', '', 'it-timeline'),
       link('#/symptoms', 'library', 'Troubleshooting', 'i-wrench', view === 'symptoms', '', 'it-symptoms'),
       link('#/field', 'library', 'In the Field', 'i-globe', view === 'field', '', 'it-field'),
@@ -788,9 +838,9 @@
     slugify, uid, clamp, debounce, fmtDate, fmtMonth, one, chev, settings, saveView, bindMine,
     mine: () => ({ positions, highlights, cardState, reviewState, practiceState, seen }),
     saveReview, savePractice, toast, copyText, loadNav, loadPage, renderMarkdown, renderInline, autoColor, cardColor,
-    cardNotesOf, notesCount, cardEntry, cardify, paintCard, openCard, othersOn, cardOthers, cardNotes, noteBy, otherNotes, enhance, fieldItem, markWide, loadImages,
+    cardNotesOf, notesCount, cardEntry, cardify, paintCard, openCard, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, enhance, fieldItem, markWide, loadImages,
     applySettings, updateThemeColor, backBtn, searchBtn, focusBtn, setNav, watchLargeTitle, renderTabbar, where, setActive,
-    canPublish, renderSidebar, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
+    canPublish, renderSidebar, discussions, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
     changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY
   };
   // Functions part 2 provides, used above.
