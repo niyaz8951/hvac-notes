@@ -32,7 +32,7 @@ const text = async (page, sel) => (await page.textContent(sel) || '').replace(/\
 
 // 1. the editor publishes the invented library
 const admin = await session('demo_admin');
-await admin.goto(BASE + '/hvac-notes/publish.html');
+await admin.goto(BASE + '/hvac-notes/#/publish');          // Publish lives inside the reader
 await admin.waitForSelector('#lib .badge');
 await admin.setInputFiles('#zip', FIXTURE);
 await admin.waitForSelector('#publish');
@@ -95,15 +95,20 @@ await user.click('#sheet [data-close]');
 // a card note
 await user.goto(BASE + '/hvac-notes/#/chillers/terms');
 await user.waitForSelector('.kcard[data-k="chillers/terms/zeta-unit"] .kcard-edit');
-await user.click('.kcard[data-k="chillers/terms/zeta-unit"] .kcard-edit'); await user.waitForSelector('#card-note');
-await user.fill('#card-note', 'Invented card note'); await user.waitForTimeout(1200);
-await user.click('#sheet [data-close]');
+await user.click('.kcard[data-k="chillers/terms/zeta-unit"] .kcard-edit'); await user.waitForSelector('.fx .fx-note');
+ok(/Zeta unit/.test(await text(user, '.fx .fx-title')), 'the card button opens focus mode on that card');
+await user.click('.fx .fx-swatches [data-c="sage"]');
+await user.fill('.fx .fx-note', 'Invented card note'); await user.waitForTimeout(1200);
+await user.click('.fx [data-fx="done"]');
+await user.waitForFunction(() => !document.querySelector('.fx'));
 ok(sql("select author || '|' || note from hvac_notes.cards c join core.profiles p on p.id = c.user_id where p.username = 'demo_user'") === 'Demo User|Invented card note', 'card note saved with the author name');
 // search
 await user.keyboard.press('/'); await user.fill('#search-input', 'tqx');
 await user.waitForSelector('#search-results a');
 ok(/Test basics/.test(await text(user, '#search-results')), 'search finds a page by its keyword');
 await user.keyboard.press('Escape');
+await user.goto(BASE + '/hvac-notes/#/symptoms/chillers'); await user.waitForSelector('.large-title');
+ok(/Troubleshooting/.test(await text(user, '.large-title')) && /Chillers/.test(await text(user, '.subtitle')), 'Troubleshooting is per notebook');
 await user.goto(BASE + '/hvac-notes/#/terms');
 await user.waitForSelector('.az-tiles li');
 ok((await user.$$('.az-tiles li')).length === 2, 'All Terms lists the dictionary cards');
@@ -118,12 +123,14 @@ ok(wide, 'no sideways scroll');
 await user.goto(BASE + '/hvac-notes/publish.html');
 await user.waitForSelector('.state h2');
 ok(/Nothing here/.test(await text(user, 'main')), 'a reader gets "Nothing here" on the Publish page');
+await user.goto(BASE + '/hvac-notes/#/publish'); await user.waitForSelector('main .empty');
+ok(/Not Found/.test(await text(user, 'main')) && !(await user.$('#pub-host')), 'a reader gets nothing at #/publish in the reader');
 const refused = await user.evaluate(async () => { try { await Api.rpc('hvac_notes_publish_export'); return 'allowed'; } catch (e) { return e.code; } });
 ok(refused === 'NO_RIGHT', 'publish functions refuse a reader (NO_RIGHT)');
 ok(user.problems.length === 0, 'reader: no console errors or CSP reports' + (user.problems.length ? ': ' + user.problems.join(' | ') : ''));
 
 // 3. the editor sees the reader's highlight, note and card note with his name, and removes the highlight
-await admin.goto(BASE + '/hvac-notes/#/theory/test-basics');
+await admin.goto(BASE + '/hvac-notes/#/theory/test-basics'); await admin.reload();
 await admin.waitForSelector('#book mark.hl.other.has-note');
 await admin.click('#book mark.hl.other'); await admin.waitForSelector('#sheet:not([hidden]) .sheet-by');
 ok(/Demo User/.test(await text(admin, '#sheet .sheet-by')) && /Invented note from the reader/.test(await text(admin, '#sheet')), "another user's highlight shows its author and note");
@@ -136,7 +143,7 @@ await admin.click('#sheet [data-close]');
 await admin.goto(BASE + '/hvac-notes/#/discussions'); await admin.waitForSelector('#seg-ds');
 await admin.click('#seg-ds [data-v="all"]');
 ok(/Answered/.test(await text(admin, 'main')) && /Demo Admin/.test(await text(admin, 'main')), 'Discussions lists the thread as answered');
-await user.goto(BASE + '/hvac-notes/#/theory/test-basics'); await user.waitForSelector('#book mark.hl');
+await user.goto(BASE + '/hvac-notes/#/theory/test-basics'); await user.reload(); await user.waitForSelector('#book mark.hl');
 await user.click('#book mark.hl'); await user.waitForSelector('#sheet:not([hidden]) .reply');
 ok(/Demo Admin\s*·.*Invented answer from the admin/.test(await text(user, '#sheet .reply')), "the reader sees the editor's answer under his highlight");
 const noDel = await user.evaluate(async () => { try { await Api.rpc('hvac_notes_reply_delete', { p_id: 1 }); return 'allowed'; } catch (e) { return e.code; } });

@@ -13,8 +13,9 @@
  */
 (function () {
   'use strict';
-  const { html, render } = window.HN;
-  const $ = s => document.querySelector(s);
+  const { html, render, one } = window.HN;
+  let host = document;
+  const $ = s => host.querySelector(s);
   const BUCKET = 'hvac-notes';
   const L = window.HVACLint, IDX = window.HVACIndex;
   const TABS = L.TABS;
@@ -269,6 +270,7 @@
       Core.toast(`Published version ${r.version}`, 'success');
       plan = null; $('#review').hidden = true; resetInputs();
       await load();
+      if (host !== document) host.dispatchEvent(new CustomEvent('hn-published', { bubbles: true }));
     } finally { busy = false; }
   }
 
@@ -291,11 +293,35 @@
     }
   }
 
-  Core.requireLogin({ tile: 'hvac-notes', right: 'edit' }).then(() => {
-    Core.setTitle('Publish · HVAC Notes');
-    load().catch(err => { Core.showState('Cannot load', Api.errorMessage(err), { href: location.pathname, label: 'Try again' }); });
+  // The Publish panel: rendered into a host (publish.html's main, or the reader's #/publish view) and bound.
+  function mount(where) {
+    host = where; plan = null; cur = null; busy = false;
+    render(where, html`<div class="card" id="lib"></div>
+      <div class="card">
+        <h2>Upload pages</h2>
+        <p class="muted">A zip or a folder that holds notebook folders (theory, chillers, ahu, fcu, systems, ashrae), each with its <span class="mono">nav.json</span>, its pages (<span class="mono">&lt;slug&gt;.md</span>) and an <span class="mono">images/</span> folder, plus <span class="mono">CREDITS.md</span>. Pages you leave out stay as they are; a page its notebook's new <span class="mono">nav.json</span> no longer lists is removed.</p>
+        <div class="row">
+          <label class="btn primary" for="zip">Choose a zip</label>
+          <input type="file" id="zip" accept=".zip,application/zip" hidden>
+          <label class="btn" for="dir">Choose a folder</label>
+          <input type="file" id="dir" webkitdirectory multiple hidden>
+        </div>
+        <label class="check hp-whole"><input type="checkbox" id="whole"> This is the whole library: remove published pages and images it does not have</label>
+        <p class="hint">Nothing is published until you check the result below and press Publish.</p>
+      </div>
+      <div class="card" id="review" hidden></div>`);
     $('#zip').addEventListener('change', e => { const f = e.target.files[0]; if (f) take(() => window.HNZip.read(f)); });
     $('#dir').addEventListener('change', e => { const l = e.target.files; if (l && l.length) take(() => fromFolder(l)); });
     $('#whole').addEventListener('change', () => { if (plan) $('#review').hidden = true; resetInputs(); });
-  });
+    return load();
+  }
+  window.HNPublish = { mount };
+
+  // Stand-alone page (publish.html): guard with the right, then mount into main.
+  if (document.body.dataset.page === 'publish') {
+    Core.requireLogin({ tile: 'hvac-notes', right: 'edit' }).then(() => {
+      Core.setTitle('Publish · HVAC Notes');
+      mount(document.querySelector('#pub-host')).catch(err => { Core.showState('Cannot load', Api.errorMessage(err), { href: location.pathname, label: 'Try again' }); });
+    });
+  }
 })();

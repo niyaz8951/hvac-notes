@@ -123,9 +123,6 @@ kbd, pre { font-family: var(--mono); font-size: .86em; }
 .empty.tall { padding-top: 20vh; }
 .empty-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
 .sheet-note { margin: 16px 4px 0; font: 400 13px/1.45 var(--ui); color: var(--text2); }
-.install-head { display: flex; gap: 14px; align-items: center; margin: 4px 0 10px; }
-.install-head img { width: 56px; height: 56px; border-radius: 22.5%; }
-.install-head strong { font-size: 20px; }
 .f-serif { font-family: var(--serif); }
 .f-sans { font-family: var(--ui); }
 
@@ -798,16 +795,20 @@ mark.hl.new { animation: paint .45s var(--hn-ease) both; }
 @keyframes fx-back { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .fx-slide { animation: none; } .fx-bar i { transition: none; } }
 body.no-scroll .fx { overscroll-behavior: contain; }
-/* Wide screens: a reading pane over the dimmed page */
+/* Wide screens: a floating window over the dimmed page, the cards before and after shown faintly */
 @media (min-width: 760px) {
-  .fx { align-items: center; justify-content: center; padding: 3vh 24px; background: var(--scrim); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); animation: view-in .18s var(--hn-ease) both; }
-  .fx-win { flex: 0 0 auto; width: 100%; max-width: 880px; height: min(92vh, 880px); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow-lg); }
-  .fx-body { padding: 26px 44px 32px; }
-  .fx-ctx { display: block; width: 100%; padding: 2px 6px; border: 0; background: none; color: var(--text2); font: 500 calc(14px * var(--fx-k)) / 1.35 var(--ui); text-align: left; opacity: .55; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .2s; }
+  .fx { align-items: center; justify-content: center; padding: 4vh 48px; background: var(--scrim); -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2); animation: fade .18s ease both; }
+  .fx-win { flex: 0 0 auto; width: 100%; max-width: 780px; max-height: min(88vh, 900px); height: auto; border-radius: 24px; overflow: hidden; background: var(--card); border: 1px solid var(--line); box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .04) inset; animation: fx-pop .22s var(--hn-ease) both; }
+  .fx-top { padding: 10px 16px 6px; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .fx-body { padding: 10px 40px 26px; }
+  .fx-ctx { display: block; width: 100%; padding: 2px 6px; border: 0; background: none; color: var(--text2); font: 500 calc(14px * var(--fx-k)) / 1.35 var(--ui); text-align: left; opacity: .5; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .2s; }
   .fx-ctx:hover, .fx-ctx:focus-visible { opacity: 1; }
-  .fx-nav { padding: 12px 44px 14px; }
+  .fx-nav { padding: 10px 40px 16px; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .fx-nav button { background: var(--fill); }
+  .fx .fx-book .kcard { box-shadow: none; }
+  @keyframes fx-pop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .fx-win { animation: none; } }
 }
-
 
 /* ===== Learning path, what's new, growth marks, term peek ===== */
 .section-head .head-note { font: 400 14px var(--ui); color: var(--text2); }
@@ -973,3 +974,8 @@ mark.hl[data-replies]::after { content: attr(data-replies); display: inline-bloc
 .ds-page { font: 600 13px var(--ui); color: var(--text2); }
 .ds-tag { flex: none; font: 600 11px/18px var(--ui); padding: 0 8px; border-radius: 9px; background: var(--fill); color: var(--text2); }
 .ds-tag.ok { background: color-mix(in srgb, var(--sw-green) 22%, transparent); color: var(--text); }
+
+/* Publish inside the reader: the core's cards, spaced like the reader's groups */
+.hn-publish .card { margin-bottom: 16px; }
+.hn-publish .card h2 { margin-top: 0; }
+.hn-publish .loading-veil { position: static; padding: 40px 0; }

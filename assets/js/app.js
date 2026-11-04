@@ -159,7 +159,7 @@
         card = document.createElement('section');
         card.className = 'kcard'; card.dataset.k = `${tab}/${slug}/${x.id}`;
         grid.appendChild(card); card.appendChild(x);
-        card.append(html`<button class="kcard-edit no-hl" type="button" aria-label="Colour and note">${icon('i-palette')}</button>`);
+        card.append(html`<button class="kcard-edit no-hl" type="button" aria-label="Open in focus mode">${icon('i-focus')}</button>`);
         continue;
       }
       if (/^H[1-2]$/.test(x.tagName)) { grid = card = null; continue; }
@@ -624,12 +624,10 @@
       link('#/review', 'library', 'Review', 'i-review', view === 'review', '', 'it-review'),
       link('#/discussions', 'library', 'Discussions', 'i-chat', view === 'discussions', unansweredCount() || '', 'it-notes'),
       link('#/timeline', 'library', 'Timeline', 'i-timeline', view === 'timeline', '', 'it-timeline'),
-      link('#/symptoms', 'library', 'Troubleshooting', 'i-wrench', view === 'symptoms', '', 'it-symptoms'),
-      link('#/field', 'library', 'In the Field', 'i-globe', view === 'field', '', 'it-field'),
       link('#/terms', 'library', 'All Terms', 'i-az', view === 'terms', '', 'it-terms'),
       link('#/standards', 'library', 'All Standards', 'i-standards', view === 'standards', '', 'it-standards')
     ];
-    if (canPublish()) parts.push(html`<a class="side-link" href="/hvac-notes/publish.html"><span class="icon-tile it-publish">${icon('i-upload')}</span>Publish</a>`);
+    if (canPublish()) parts.push(link('#/publish', 'library', 'Publish', 'i-upload', view === 'publish', '', 'it-publish'));
     if (tab && TAB[tab]) {
       const pages = navs[TABS.findIndex(t => t.id === tab)], n = notesCount(tab);
       if (pages.length || n) parts.push(html`<p class="side-label">${TAB[tab].name}</p><ul class="side-pages">${pages.map(p => html`<li><a href="#/${tab}/${p.slug}" aria-current="${p.slug === slug ? 'page' : null}">${p.title}</a></li>`)}${n ? html`<li><a href="#/notebook/${tab}" aria-current="${view === 'notebook' ? 'page' : null}">Highlights &amp; Notes<span class="side-count">${n}</span></a></li>` : ''}</ul>`);
@@ -676,6 +674,7 @@
 
   let IDX = null;
   async function getIndex() { if (!IDX) IDX = await D.index(TABS.map(t => t.id)); return IDX; }
+  function forgetIndex() { IDX = null; ALIAS = null; }
   const pageOf = (idx, route) => idx.pages.find(p => `${p.tab}/${p.slug}` === route) || (ALIAS && ALIAS[route] ? idx.pages.find(p => `${p.tab}/${p.slug}` === ALIAS[route]) : undefined);
 
   // "aliases" in nav.json: old names of a page ("old-slug" or "tab/old-slug") → its current route.
@@ -852,7 +851,7 @@
     saveReview, savePractice, toast, copyText, loadNav, loadPage, renderMarkdown, renderInline, autoColor, cardColor,
     cardNotesOf, notesCount, cardEntry, cardify, paintCard, openCard, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, enhance, fieldItem, markWide, loadImages,
     applySettings, updateThemeColor, backBtn, searchBtn, focusBtn, setNav, watchLargeTitle, renderTabbar, where, setActive,
-    canPublish, renderSidebar, discussions, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
+    canPublish, renderSidebar, discussions, forgetIndex, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
     changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY
   };
   // Functions part 2 provides, used above.

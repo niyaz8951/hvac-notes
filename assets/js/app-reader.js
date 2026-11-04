@@ -31,11 +31,11 @@
     setActive('library', null, null);
     setTitle('');
     const navs = await Promise.all(TABS.map(t => loadNav(t.id)));
-    setNav({ title: 'Home', right: [installable() ? html`<button class="nav-btn" id="btn-install" type="button">Install</button>` : '', searchBtn()] });
+    setNav({ title: 'Home', right: searchBtn() });
     const all = navs.flatMap((pages, i) => pages.map(p => ({ ...p, tab: TABS[i].id })));
     if (!all.length) {
       render(main, html`<div class="hn-page"><h1 class="large-title">Home</h1><div class="empty"><strong>No Pages Yet</strong>
-        ${canPublish() ? html`<span>Publish the pages first.</span><a class="btn primary" href="/hvac-notes/publish.html">Publish</a>` : html`<span>Nothing has been published yet.</span>`}</div></div>`);
+        ${canPublish() ? html`<span>Publish the pages first.</span><a class="btn primary" href="#/publish">Publish</a>` : html`<span>Nothing has been published yet.</span>`}</div></div>`);
       watchLargeTitle(); return;
     }
     const { positions } = m();
@@ -90,8 +90,6 @@
       <div class="group gap-t">
         ${libRow('#/review', 'Review', 'i-review', 'it-review', dueN ? `${dueN} due` : '')}
         ${libRow('#/timeline', 'Timeline', 'i-timeline', 'it-timeline', weekN ? `+${weekN} this week` : '')}
-        ${libRow('#/symptoms', 'Troubleshooting', 'i-wrench', 'it-symptoms', symN)}
-        ${fieldN ? libRow('#/field', 'In the Field', 'i-globe', 'it-field', fieldN) : ''}
         ${libRow('#/terms', 'All Terms', 'i-az', 'it-terms', termN)}
         ${libRow('#/standards', 'All Standards', 'i-standards', 'it-standards', stdN)}
       </div>
@@ -113,6 +111,8 @@
     setNav({ title: t.name, right: searchBtn() });
     const startSlug = (pages.find(p => p.start) || pages[0] || {}).slug;
     const idx = await getIndex(), dueN = dueOf(reviewPool(idx, tab)).length;
+    const symN = idx.pages.filter(p => p.tab === tab).reduce((n, p) => n + p.symptoms.length, 0);
+    const fieldN = idx.pages.filter(p => p.tab === tab).reduce((n, p) => n + (p.field || []).length, 0);
     seedSeen(idx);
     const groups = [];
     pages.forEach((p, i) => {
@@ -129,6 +129,9 @@
     render(main, html`<div class="hn-page"><h1 class="large-title">${t.name}</h1><p class="subtitle">${t.blurb}</p>
       ${notesRow(tab)}${dueN ? html`<div class="group gap-b"><a class="hn-row with-icon" href="#/review/${tab}"><span class="icon-tile it-review">${icon('i-review')}</span>
       <span class="row-main"><span class="row-title">Review</span></span><span class="row-value">${dueN} due</span>${chev()}</a></div>` : ''}
+      ${symN || fieldN ? html`<div class="group gap-b">
+        ${symN ? html`<a class="hn-row with-icon" href="#/symptoms/${tab}"><span class="icon-tile it-symptoms">${icon('i-wrench')}</span><span class="row-main"><span class="row-title">Troubleshooting</span></span><span class="row-value">${symN}</span>${chev()}</a>` : ''}
+        ${fieldN ? html`<a class="hn-row with-icon" href="#/field/${tab}"><span class="icon-tile it-field">${icon('i-globe')}</span><span class="row-main"><span class="row-title">In the Field</span></span><span class="row-value">${fieldN}</span>${chev()}</a>` : ''}</div>` : ''}
       ${pages.length ? groups.map(g => html`${g.g ? html`<p class="group-label">${g.g}</p>` : ''}<div class="group">${g.rows}</div>`) : html`<div class="empty"><strong>No Pages Yet</strong></div>`}</div>`);
     watchLargeTitle();
   }
@@ -200,6 +203,37 @@
     watchLargeTitle();
   }
 
+  // Publish, inside the reader (right 'edit'): the panel's code is loaded the first time it is opened.
+  const SCRIPT_V = (document.querySelector('script[src*="app-reader.js"]') || {}).src || '';
+  const V = (SCRIPT_V.match(/\?v=([\w.-]+)/) || [])[1];
+  function loadScript(name) {
+    return new Promise((ok, no) => {
+      if (document.querySelector(`script[data-hn="${name}"]`)) { ok(); return; }
+      const sc = document.createElement('script');
+      sc.src = `/hvac-notes/assets/js/${name}.js${V ? '?v=' + V : ''}`; sc.dataset.hn = name; sc.defer = true;
+      sc.onload = ok; sc.onerror = () => no(new Error(`Could not load ${name}`));
+      document.head.appendChild(sc);
+    });
+  }
+  async function viewPublish() {
+    if (!canPublish()) return viewMissing();
+    setActive('publish', null, null);
+    setTitle('Publish');
+    setNav({ left: backBtn('#/', 'Home'), title: 'Publish' });
+    render(main, html`<div class="hn-page hn-publish"><h1 class="large-title">Publish</h1><p class="subtitle">Upload pages, check them, and publish them to everyone who has HVAC Notes.</p>
+      <div id="pub-host"><div class="loading-veil"><span class="spin"></span>Loading</div></div></div>`);
+    watchLargeTitle();
+    try {
+      for (const n of ['lint', 'hn-zip', 'publish']) await loadScript(n);
+      await window.HNPublish.mount(main.querySelector('#pub-host'));
+    } catch (err) {
+      if (err && err.code === 'SIGNED_OUT') { Core.showError(err); return; }
+      render(main.querySelector('#pub-host'), html`<div class="empty"><strong>Cannot Load</strong><span>${Api.errorMessage(err)}</span></div>`);
+    }
+  }
+  // A publish from inside the reader: the pages, index and timeline are read again next time.
+  main.addEventListener('hn-published', () => { D.reset(); A.forgetIndex(); IDXC = null; getIndex().then(x => { IDXC = x; }, () => { }); renderSidebar(); });
+
   function viewMissing() {
     setActive('missing', null, null);
     setTitle('Not Found');
@@ -217,17 +251,21 @@
   }
 
   /* In the Field: every "## In the field" item in every notebook, newest first */
-  async function viewField() {
-    emptyView('field', 'In the Field');
+  async function viewField(tab) {
+    if (!TAB[tab]) return viewMissing();
+    const t = TAB[tab];
+    setActive('field', tab, null);
+    setTitle(`${t.name} · In the Field`);
+    setNav({ left: backBtn(`#/${tab}`, t.name), title: 'In the Field', right: searchBtn() });
     const idx = await getIndex();
-    const items = idx.pages.flatMap(p => (p.field || []).map(x => ({ ...x, p }))).sort((a, b) => b.date.localeCompare(a.date));
+    const items = idx.pages.filter(p => p.tab === tab).flatMap(p => (p.field || []).map(x => ({ ...x, p }))).sort((a, b) => b.date.localeCompare(a.date));
     const kinds = [...new Set(items.map(x => x.kind))];
     const months = {};
     items.forEach(x => { const k = x.date.slice(0, 7); (months[k] = months[k] || []).push(x); });
     const body = Object.entries(months).map(([mo, list]) => html`<p class="group-label fd-month">${fmtMonth(mo)}</p><div class="group field-group">${list.map(x =>
       html`<div class="fd" data-kind="${slugify(x.kind)}" data-tab="${x.p.tab}">${fieldItem(x,
         html`<a class="fd-from" href="#/${x.p.tab}/${x.p.slug}/in-the-field">${TAB[x.p.tab] ? TAB[x.p.tab].name : x.p.tab} · ${x.p.title}</a>`)}</div>`)}</div>`);
-    render(main, html`<div class="hn-page"><h1 class="large-title">In the Field</h1>
+    render(main, html`<div class="hn-page"><h1 class="large-title">In the Field</h1><p class="subtitle">${t.name}</p>
       ${kinds.length > 1 ? html`<div class="seg fd-filter" role="group" aria-label="Kind"><button type="button" aria-pressed="true" data-k="">All</button>${kinds.map(k => html`<button type="button" aria-pressed="false" data-k="${slugify(k)}">${k}</button>`)}</div>` : ''}
       <div id="fd-body">${body.length ? body : html`<div class="empty"><strong>Nothing Yet</strong></div>`}</div></div>`);
     const f = main.querySelector('.fd-filter');
@@ -241,16 +279,17 @@
   }
 
   /* Troubleshooting: every "### Symptom: …" in every notebook */
-  async function viewSymptoms() {
-    emptyView('symptoms', 'Troubleshooting');
+  async function viewSymptoms(tab) {
+    if (!TAB[tab]) return viewMissing();
+    const t = TAB[tab];
+    setActive('symptoms', tab, null);
+    setTitle(`${t.name} · Troubleshooting`);
+    setNav({ left: backBtn(`#/${tab}`, t.name), title: 'Troubleshooting', right: searchBtn() });
     const idx = await getIndex();
-    const body = TABS.map(t => {
-      const rows = idx.pages.filter(p => p.tab === t.id).flatMap(p => p.symptoms.map(s => ({ p, s })));
-      if (!rows.length) return '';
-      return html`<p class="group-label" data-tab="${t.id}">${t.name}</p><div class="group">${rows.map(({ p, s }) => html`<a class="hn-row" href="#/${p.tab}/${p.slug}/${s.id}" data-tab="${p.tab}">
-        <span class="row-main"><span class="row-title">${s.title.replace(/^./, c => c.toUpperCase())}</span><span class="row-sub">${p.title}</span></span>${chev()}</a>`)}</div>`;
-    }).filter(Boolean);
-    render(main, html`<div class="hn-page"><h1 class="large-title">Troubleshooting</h1>${body.length ? body : html`<div class="empty"><strong>No Symptoms Yet</strong></div>`}</div>`);
+    const byPage = idx.pages.filter(p => p.tab === tab && p.symptoms.length);
+    const body = byPage.map(p => html`<p class="group-label" data-tab="${tab}">${p.title}</p><div class="group">${p.symptoms.map(s => html`<a class="hn-row" href="#/${p.tab}/${p.slug}/${s.id}" data-tab="${p.tab}">
+        <span class="row-main"><span class="row-title">${s.title.replace(/^./, c => c.toUpperCase())}</span></span>${chev()}</a>`)}</div>`);
+    render(main, html`<div class="hn-page"><h1 class="large-title">Troubleshooting</h1><p class="subtitle">${t.name}</p>${body.length ? body : html`<div class="empty"><strong>No Symptoms Yet</strong></div>`}</div>`);
     watchLargeTitle();
   }
 
@@ -426,6 +465,12 @@
     return Math.max(0, i);
   }
 
+  // Focus mode opened on one card of the page being read (colour, note and replies are edited there).
+  function focusCard(card) {
+    const R = A.R; if (!R || !card) return;
+    const els = [...document.querySelectorAll('#book .kcard')];
+    openFocus(els.map(c => cardItem(c, R.tab, R.slug, '')), Math.max(0, els.indexOf(card)), R.title, 'page');
+  }
   async function startFocus() {
     const R = A.R;
     if (where.view === 'reader' && R && root.dataset.layout === 'cards') {
@@ -1077,7 +1122,7 @@
       const xi = e.target.closest('img.xp-img');
       if (xi && !hasSelection()) { openViewer(xi); return; }
       const kc = e.target.closest('.kcard-edit, .kcard-note');
-      if (kc) { openCard(kc.closest('.kcard')); return; }
+      if (kc) { focusCard(kc.closest('.kcard')); return; }
       const sn = e.target.closest('[data-sol-next], [data-sol-all]');
       if (sn) {
         const a = sn.closest('.sol'), hidden = [...a.querySelectorAll('.sol-step:not(.shown)')];
@@ -1437,28 +1482,6 @@
     });
   }
 
-  /* ================= install ================= */
-
-  let deferredInstall = null;
-  const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const installable = () => !standalone();
-  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; });
-  window.addEventListener('appinstalled', () => { deferredInstall = null; toast('Installed'); if (where.view === 'library') viewLibrary(); });
-
-  function doInstall() {
-    if (deferredInstall) {
-      deferredInstall.prompt();
-      deferredInstall.userChoice.finally(() => { deferredInstall = null; });
-      return;
-    }
-    const steps = isIOS
-      ? html`<li><span>Tap ${icon('i-share')} <strong>Share</strong> in Safari.</span></li><li><span>Choose ${icon('i-plus-square')} <strong>Add to Home Screen</strong>.</span></li><li><span>Tap <strong>Add</strong>.</span></li>`
-      : html`<li><span>Open the browser menu <strong>⋮</strong>.</span></li><li><span>Choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</span></li><li><span>Confirm with <strong>Install</strong>.</span></li>`;
-    openSheet(html`<div class="sheet-head"><span></span><h2>Install</h2><button class="link-btn" type="button" data-close>Done</button></div>
-      <div class="install-head"><img src="/dame-hub/core/v1/icons/icon-192.png" alt="" width="56" height="56"><strong>${SITE}</strong></div>
-      <ol class="steps">${steps}</ol><p class="sheet-note">The app needs a connection: pages are read from the server each time.</p>`);
-  }
 
   /* ================= search ================= */
 
@@ -1596,7 +1619,6 @@
   navbar.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.id === 'btn-search') openSearch();
-    else if (b.id === 'btn-install') doInstall();
     else if (b.id === 'btn-contents') openContents();
     else if (b.id === 'btn-aa') openSettings();
     else if (b.id === 'btn-export') openExport();
@@ -1651,11 +1673,12 @@
       if (!a) await viewLibrary();
       else if (a === 'notebook') viewNotebook(b);
       else if (a === 'review') await viewReview(b);
-      else if (a === 'symptoms') await viewSymptoms();
-      else if (a === 'field') await viewField();
+      else if (a === 'symptoms') await viewSymptoms(b || where.tab || TABS[0].id);
+      else if (a === 'field') await viewField(b || where.tab || TABS[0].id);
       else if (a === 'terms') await viewTerms();
       else if (a === 'timeline') await viewTimeline();
       else if (a === 'discussions') viewDiscussions();
+      else if (a === 'publish') await viewPublish();
       else if (a === 'standards') await viewStandards();
       else if (!TAB[a]) viewMissing();
       else if (!b) await viewSection(a);

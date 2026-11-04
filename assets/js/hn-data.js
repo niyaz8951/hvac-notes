@@ -35,6 +35,12 @@ window.HNData = (function () {
     return libP;
   }
   async function nav(tab) { await library(); return navs[tab] || []; }
+  // After a publish from inside the reader: forget everything read from the library (the user's own data stays).
+  function reset() {
+    lib = null; libP = null; IDX = null; GROWTH = undefined;
+    Object.keys(navs).forEach(k => delete navs[k]); Object.keys(pageCache).forEach(k => delete pageCache[k]);
+    imgCache.clear(); textCache.clear();
+  }
 
   async function page(tab, slug) {
     const k = tab + '/' + slug;
@@ -208,7 +214,7 @@ window.HNData = (function () {
   };
 
   return {
-    BUCKET, library, nav, page, pages, index, growth, imageUrl, text, my, loadMine, save, flush, shared, loadShared, remove, replies,
+    BUCKET, library, nav, page, pages, index, growth, imageUrl, text, my, loadMine, save, flush, shared, loadShared, remove, replies, reset,
     onSaveError(fn) { onError = fn; },
     importBackup: data => Api.rpc('hvac_notes_my_import', { p_data: data })
   };
