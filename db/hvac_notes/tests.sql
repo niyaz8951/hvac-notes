@@ -1,5 +1,5 @@
 -- HVAC Notes tile tests. Run on STAGING after db/core/seed-staging.sql and db/hvac_notes/001_init.sql. Everything is rolled back.
--- Needs: the tile 'hvac-notes' registered and switched on with the right 'edit' (admin page), and the demo accounts.
+-- Needs: the tile 'hvac-notes' registered with the right 'edit' (admin page; it may stay off), and the demo accounts.
 -- Inside the transaction (then rolled back) it gives demo_admin the tile with 'edit', demo_user the tile without rights,
 -- and disables demo_none for one check. For every function: an allowed call, and refused calls for signed out,
 -- pending, disabled, no tile, no right and another user's record.
@@ -7,13 +7,15 @@ begin;
 
 do $$
 begin
-  if not exists (select 1 from core.tiles where id = 'hvac-notes' and enabled and 'edit' = any (rights)) then
-    raise exception 'Register the tile hvac-notes with the right "edit" and switch it on in the admin page first.';
+  if not exists (select 1 from core.tiles where id = 'hvac-notes' and 'edit' = any (rights)) then
+    raise exception 'Register the tile hvac-notes with the right "edit" in the admin page first.';
   end if;
   if (select count(*) from core.profiles where username in ('demo_admin', 'demo_user', 'demo_none', 'demo_pending')) <> 4 then
     raise exception 'Run db/core/seed-staging.sql first (demo accounts).';
   end if;
 end $$;
+-- The tile is switched on for the test only (rolled back with everything else).
+update core.tiles set enabled = true where id = 'hvac-notes';
 
 create temp table t_ids as select username k, id from core.profiles where username in ('demo_admin', 'demo_user', 'demo_none', 'demo_pending');
 grant select on t_ids to public;
