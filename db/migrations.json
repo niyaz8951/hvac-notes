@@ -1,0 +1,10 @@
+{
+  "repo": "hvac-notes",
+  "note": "Every SQL file of this repo in run order. Admin > Health lists the ones not yet applied. Check: node ../dame-hub/dev/migrations-check.mjs .",
+  "files": [
+    { "name": "001_init", "path": "db/hvac_notes/001_init.sql" },
+    { "name": "002_replies", "path": "db/hvac_notes/002_replies.sql" },
+    { "name": "003_names", "path": "db/hvac_notes/003_names.sql", "superseded": true },
+    { "name": "004_names_no_temp", "path": "db/hvac_notes/004_names_no_temp.sql" }
+  ]
+}

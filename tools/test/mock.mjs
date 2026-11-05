@@ -40,6 +40,7 @@ function claims(req) {
 function session(user_id) {
   const session_id = randomUUID(), refresh_token = randomUUID();
   sessions.set(refresh_token, { user_id, session_id });
+  sql(`insert into auth.sessions (id, user_id) values (${lit(session_id)}, ${lit(user_id)})`);   // as Supabase Auth (core 008)
   return { access_token: token(user_id, session_id), refresh_token, expires_in: 3600, token_type: 'bearer', user: { id: user_id } };
 }
 function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(body === undefined ? '' : JSON.stringify(body)); }

@@ -30,8 +30,10 @@ delete from core.tile_access where tile_id = 'hvac-notes' and user_id = (select 
 create or replace function pg_temp.act_as(p_key text) returns void language plpgsql as $$
 declare v_id uuid; v_sid uuid := gen_random_uuid();
 begin
+  execute 'reset role';
   if p_key is null then perform set_config('request.jwt.claims', '', true); perform set_config('role', 'anon', true); return; end if;
   select id into v_id from t_ids where k = p_key;
+  insert into auth.sessions (id, user_id, created_at, updated_at) values (v_sid, v_id, now(), now()); -- as Supabase Auth at sign-in
   perform set_config('request.jwt.claims', json_build_object('sub', v_id, 'session_id', v_sid, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
   perform public.core_session_start();
@@ -260,6 +262,47 @@ begin
   delete from storage.objects where bucket_id = 'hvac-notes';
   reset role;
   select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 0 then raise exception 'editor delete: %', n; end if;
+
+  -- shared names (004): a third author B = demo_none, given the tile for this block. The reader A sees B's highlight,
+  -- card note and reply with B's current name, after a rename the new name, after B is deleted the saved name.
+  insert into core.tile_access (user_id, tile_id, is_admin, rights) select id, 'hvac-notes', false, '{}' from t_ids where k = 'demo_none';
+  perform pg_temp.act_as('demo_none');
+  perform public.hvac_notes_highlight_save('nne001', 'theory', 'example', 'Example page', 'blue', 'B note', q_ok::jsonb);
+  perform public.hvac_notes_card_save('theory/terms/scop', 'SCOP', 'mint', 'B card note');
+  perform public.hvac_notes_reply_save('highlight', 'adm001', 'B reply');
+  reset role;
+  perform pg_temp.act_as('demo_user');
+  -- twice in one transaction, same result (003 kept a temp table between calls)
+  select public.hvac_notes_shared() into v;
+  if v <> public.hvac_notes_shared() then raise exception 'second call differs'; end if;
+  if not exists (select 1 from jsonb_array_elements(v -> 'highlights') x where x ->> 'id' = 'nne001' and x ->> 'by' = 'Demo None' and x ->> 'note' = 'B note')
+     or not exists (select 1 from jsonb_array_elements(v -> 'cards') x where x ->> 'key' = 'theory/terms/scop' and x ->> 'by' = 'Demo None')
+     or not exists (select 1 from jsonb_array_elements(v -> 'replies') x where x ->> 'ref' = 'adm001' and x ->> 'by' = 'Demo None' and not (x ->> 'mine')::boolean)
+     or not exists (select 1 from jsonb_array_elements(v -> 'highlights') x where x ->> 'id' = 'adm001' and x ->> 'by' = 'Demo Admin') then
+    raise exception 'names: A does not see B %', v;
+  end if;
+  reset role;
+  update core.profiles set display_name = 'Demo None Renamed' where username = 'demo_none';
+  perform pg_temp.act_as('demo_user');
+  select public.hvac_notes_shared() into v;
+  select count(*) into n from (
+    select x ->> 'by' b from jsonb_array_elements(v -> 'highlights') x where x ->> 'id' = 'nne001'
+    union all select x ->> 'by' from jsonb_array_elements(v -> 'cards') x where x ->> 'key' = 'theory/terms/scop'
+    union all select x ->> 'by' from jsonb_array_elements(v -> 'replies') x where x ->> 'ref' = 'adm001' and x ->> 'body' = 'B reply') y
+  where y.b = 'Demo None Renamed';
+  if n <> 3 then raise exception 'names after rename: % of 3 %', n, v; end if;
+  reset role;
+  delete from auth.users where id = (select id from t_ids where k = 'demo_none');   -- as core_admin_delete_user (cascades to the profile)
+  if exists (select 1 from core.profiles where username = 'demo_none') then raise exception 'delete did not cascade'; end if;
+  perform pg_temp.act_as('demo_user');
+  select public.hvac_notes_shared() into v;
+  select count(*) into n from (
+    select x ->> 'by' b from jsonb_array_elements(v -> 'highlights') x where x ->> 'id' = 'nne001'
+    union all select x ->> 'by' from jsonb_array_elements(v -> 'cards') x where x ->> 'key' = 'theory/terms/scop'
+    union all select x ->> 'by' from jsonb_array_elements(v -> 'replies') x where x ->> 'ref' = 'adm001' and x ->> 'body' = 'B reply') y
+  where y.b = 'Demo None';
+  if n <> 3 then raise exception 'names after delete (saved name): % of 3 %', n, v; end if;
+  reset role;
 
   -- the tables are not reachable directly
   perform pg_temp.act_as('demo_admin');
