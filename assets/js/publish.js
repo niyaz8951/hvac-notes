@@ -299,7 +299,7 @@
     render(where, html`<div class="card" id="lib"></div>
       <div class="card">
         <h2>Upload pages</h2>
-        <p class="muted">A zip or a folder that holds notebook folders (theory, chillers, ahu, fcu, systems, ashrae), each with its <span class="mono">nav.json</span>, its pages (<span class="mono">&lt;slug&gt;.md</span>) and an <span class="mono">images/</span> folder, plus <span class="mono">CREDITS.md</span>. Pages you leave out stay as they are; a page its notebook's new <span class="mono">nav.json</span> no longer lists is removed.</p>
+        <p class="muted">A zip or a folder that holds notebook folders (theory, refrigeration, chillers, ahu, fcu, systems, ashrae), each with its <span class="mono">nav.json</span>, its pages (<span class="mono">&lt;slug&gt;.md</span>) and an <span class="mono">images/</span> folder, plus <span class="mono">CREDITS.md</span>. Pages you leave out stay as they are; a page its notebook's new <span class="mono">nav.json</span> no longer lists is removed.</p>
         <div class="row">
           <label class="btn primary" for="zip">Choose a zip</label>
           <input type="file" id="zip" accept=".zip,application/zip" hidden>

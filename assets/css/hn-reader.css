@@ -90,6 +90,7 @@
 /* Notebook covers: shades of the Daikin navy, mixed with the theme's accents */
 /* Notebook covers keep the old site's colours (the reader's own look) */
 [data-tab="theory"] { --cover: #4B44C6; }
+[data-tab="refrigeration"] { --cover: #B8325A; }
 [data-tab="chillers"] { --cover: #0A64D8; }
 [data-tab="ahu"] { --cover: #1F8A44; }
 [data-tab="fcu"] { --cover: #D0600B; }

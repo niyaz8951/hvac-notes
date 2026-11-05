@@ -8,6 +8,8 @@
 - 2026-11-04 - Embedded YouTube player (tap to load) on the exception the admin repo granted; author names from `core.display_names` (`003_names.sql`); cover colours as on the old site; versioned asset links.
 - 2026-11-04 - **Live.** All 25 pages and 16 images published (version 1). Owner checked every page, image, widget and search on the live tile, and the refusals for a user without the tile.
 
+- 2026-11-05 - New notebook **Refrigeration** in the code (reader, cover, icon, learning path, Publish check). No SQL. Asset links bumped to `?v=20261105a`. Code rules and the page check on the invented library pass; the browser test was not run in this session (no local Postgres).
+
 ## SQL applied
 | File | Staging | Live |
 |---|---|---|

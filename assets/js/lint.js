@@ -27,7 +27,7 @@
   const IMAGE = /\.(svg|png|jpe?g|webp|gif)$/i;
   const IMAGE_PATH = /^[a-z0-9-]{1,30}\/images\/[A-Za-z0-9._-]{1,120}$/;
   const CODE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[ \t]*(?=\n|$)/g;
-  const TABS = ['theory', 'chillers', 'ahu', 'fcu', 'systems', 'ashrae'];
+  const TABS = ['theory', 'refrigeration', 'chillers', 'ahu', 'fcu', 'systems', 'ashrae'];
   const LIMITS = { page: 400000, nav: 200000, image: 5 * 1024 * 1024, credits: 100000 };
   // The figures each explore widget reads from its page ("data" in the widget block).
   const WIDGET_DATA = {

@@ -8,7 +8,8 @@
   /* ================= constants ================= */
 
   const TABS = [
-    { id: 'theory', name: 'Theory', icon: 'i-theory', kicker: 'Fundamentals', blurb: 'Thermodynamics, psychrometrics, heat transfer, fluid flow, the refrigeration cycle, fan and pump laws, acoustics and ventilation.' },
+    { id: 'theory', name: 'Theory', icon: 'i-theory', kicker: 'Fundamentals', blurb: 'Thermodynamics, psychrometrics, heat transfer, fluid flow, fan and pump laws, acoustics and ventilation.' },
+    { id: 'refrigeration', name: 'Refrigeration', icon: 'i-refrigeration', kicker: 'Cycles and refrigerants', blurb: 'The vapour-compression cycle, state points, mass and energy balances, lift and part load, and refrigerants.' },
     { id: 'chillers', name: 'Chillers', icon: 'i-chillers', kicker: 'Air-cooled', blurb: 'Compressors, refrigerants, high-ambient operation, part load, controls, plant integration and selection.' },
     { id: 'ahu', name: 'AHU', icon: 'i-ahu', kicker: 'Air handling units', blurb: 'Chilled-water and DX units, fresh air units, heat recovery, hygienic designs, and the parts inside them.' },
     { id: 'fcu', name: 'FCU', icon: 'i-fcu', kicker: 'Fan coil units', blurb: 'Ducted, cassette, hi-wall and floor units; 2-pipe and 4-pipe; AC and EC motors; noise and condensate.' },
@@ -18,7 +19,7 @@
   ];
   const TAB = Object.fromEntries(TABS.map(t => [t.id, t]));
   const PRODUCTS = ['chillers', 'ahu', 'fcu'].map(id => TAB[id]);
-  const BOOKS = ['theory', 'ashrae', 'systems'].map(id => TAB[id]);
+  const BOOKS = ['theory', 'refrigeration', 'ashrae', 'systems'].map(id => TAB[id]);
   const COLORS = ['yellow', 'green', 'blue', 'pink', 'purple'];
   const THEMES = [
     { id: 'auto', name: 'Auto' }, { id: 'light', name: 'White' }, { id: 'sepia', name: 'Sepia' }, { id: 'gray', name: 'Gray' }, { id: 'dark', name: 'Night' }
@@ -651,6 +652,10 @@
         <path d="M60 8v104M15 34l90 52M15 86l90-52"></path>
         <path d="M48 16l12 11 12-11M48 104l12-11 12 11M17 49l16-4-5-16M103 71l-16 4 5 16M28 91l5-16-16-4M92 29l-5 16 16 4"></path></g>
         <circle class="ln ca-faint" cx="60" cy="60" r="9" stroke-width="1.2"></circle></svg>`;
+    if (id === 'refrigeration') return html`<svg viewBox="0 0 120 120" aria-hidden="true">
+        <g class="ln ca-faint" stroke-width="1"><path d="M10 108h102M10 108V12"></path><path d="M20 104C26 40 44 18 62 18s30 22 38 86"></path></g>
+        <g class="ln" stroke-width="2.4"><path d="M104 40H34V86H82L104 40"></path></g>
+        <g class="ln" stroke-width="1.6"><path d="M62 40l7-4.5M62 40l7 4.5M62 86l-7-4.5M62 86l-7 4.5"></path></g></svg>`;
     if (id === 'ahu') return html`<svg viewBox="0 0 120 120" aria-hidden="true"><g class="ln" stroke-width="2.2">
         <path d="M6 40h62a14 14 0 1 0-14-14"></path><path d="M6 60h86a14 14 0 1 1-14 14"></path><path d="M6 80h40a12 12 0 1 1-12 12"></path></g>
         <g class="ln ca-faint" stroke-width="1"><path d="M6 100h100M6 20h100"></path></g></svg>`;
@@ -823,7 +828,7 @@
   /* ================= learning path: what to read next ================= */
 
   // Chapters in learning order: Theory first, then the products, then Systems; dictionaries and book notes left out.
-  const PATH_ORDER = ['theory', 'chillers', 'ahu', 'fcu', 'systems'];
+  const PATH_ORDER = ['theory', 'refrigeration', 'chillers', 'ahu', 'fcu', 'systems'];
   function upNext(idx, navs, skip) {
     const meta = {};
     TABS.forEach((t, i) => navs[i].forEach(m => { meta[`${t.id}/${m.slug}`] = m; }));
