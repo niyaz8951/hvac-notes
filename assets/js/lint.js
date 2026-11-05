@@ -8,6 +8,7 @@
  *   - prereq / related naming a page that does not exist; a prereq loop
  *   - a page removed or renamed without "aliases" on the page that replaced it; an alias used twice
  *   - nav.json entries without a page, bad slugs or dates; unknown callouts; widgets that do not parse;
+ *     a linked chapter ({ "link": "tab/slug" }) naming a page that does not exist, listed twice, or in its own notebook;
  *     missing images; photos not listed in CREDITS.md
  *   - "## In the field" items not in the form  - [Title](https://…) · Source · YYYY-MM · Kind  with a note below,
  *     an unknown kind, a date in the future, the same link twice on a page
@@ -90,7 +91,17 @@
     // nav.json
     for (const [tab, list] of Object.entries(navs)) {
       const slugs = new Set();
+      const linked = new Set();
       for (const m of list) {
+        if (m && !m.slug && m.link !== undefined) {   // a chapter whose home is another notebook, shown here too
+          const to = String(m.link), where = `${tab}/nav.json`;
+          if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(to)) { err(where, `link "${to}" must be a route "notebook/slug"`); continue; }
+          if (to.split('/')[0] === tab) err(where, `link "${to}" is in this notebook; list the page itself`);
+          else if (!byRoute.has(to)) err(where, alias[to] ? `link "${to}" uses an old name; it now lives at ${alias[to]}` : `link "${to}" is not a page`);
+          if (linked.has(to)) err(where, `link "${to}" is listed twice`); linked.add(to);
+          for (const k of Object.keys(m)) if (!['link', 'group'].includes(k)) warn(where, `link "${to}": "${k}" is ignored (title, summary and dates come from the page's home)`);
+          continue;
+        }
         const r = `${tab}/${m && m.slug}`;
         if (!m || !m.slug || !/^[a-z0-9-]+$/.test(m.slug) || m.slug.length > 80) { err(`${tab}/nav.json`, `entry with a missing or invalid slug: ${JSON.stringify(m && m.slug)}`); continue; }
         if (slugs.has(m.slug)) err(r, 'listed twice in nav.json'); slugs.add(m.slug);

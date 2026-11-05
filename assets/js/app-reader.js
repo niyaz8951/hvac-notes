@@ -5,7 +5,7 @@
   const A = window.HNApp;
   const { TABS, TAB, PRODUCTS, BOOKS, COLORS, THEMES, SIZES, SITE, KCOLORS, html, render, clone, icon, D, $, root, main, navbar,
     hlBar, sheet, sheetBody, backdrop, reduced, slugify, uid, clamp, debounce, fmtDate, fmtMonth, one, chev, settings, saveView,
-    toast, copyText, loadNav, loadPage, renderMarkdown, autoColor, cardColor, cardNotesOf, notesCount, cardEntry, cardify,
+    toast, copyText, loadNav, loadToc, loadPage, renderMarkdown, autoColor, cardColor, cardNotesOf, notesCount, cardEntry, cardify,
     paintCard, openCard, enhance, fieldItem, markWide, loadImages, applySettings, updateThemeColor, backBtn, searchBtn, focusBtn,
     setNav, watchLargeTitle, renderTabbar, where, setActive, canPublish, renderSidebar, coverArt, getIndex, pageOf, aliasMap,
     migrateAliases, routeOf, relatedOf, reviewPool, dueOf, changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY,
@@ -30,9 +30,9 @@
   async function viewLibrary() {
     setActive('library', null, null);
     setTitle('');
-    const navs = await Promise.all(TABS.map(t => loadNav(t.id)));
+    const navs = await Promise.all(TABS.map(t => loadToc(t.id)));
     setNav({ title: 'Home', right: searchBtn() });
-    const all = navs.flatMap((pages, i) => pages.map(p => ({ ...p, tab: TABS[i].id })));
+    const all = navs.flatMap(pages => pages.filter(p => !p.linked));
     if (!all.length) {
       render(main, html`<div class="hn-page"><h1 class="large-title">Home</h1><div class="empty"><strong>No Pages Yet</strong>
         ${canPublish() ? html`<span>Publish the pages first.</span><a class="btn primary" href="#/publish">Publish</a>` : html`<span>Nothing has been published yet.</span>`}</div></div>`);
@@ -72,7 +72,7 @@
       .slice(0, 5);
 
     const coverOf = (t, i) => {
-      const pages = navs[i], done = pages.filter(p => progressOf(t.id, p.slug) >= 0.98).length;
+      const pages = navs[i], done = pages.filter(p => progressOf(p.tab, p.slug) >= 0.98).length;
       return html`<a class="book-item" href="#/${t.id}" data-tab="${t.id}">
         <div class="cover"><div class="cover-art">${coverArt(t.id)}</div><span class="cover-sub">${t.kicker}</span><span class="cover-name">${t.cover || t.name}</span></div>
         <div class="book-meta"><span>${pages.length ? `${pages.length} ${pages.length === 1 ? 'page' : 'pages'}` : 'Coming soon'}</span>
@@ -107,9 +107,9 @@
     const t = TAB[tab];
     setActive('section', tab, null);
     setTitle(t.name);
-    const pages = await loadNav(tab);
+    const pages = await loadToc(tab);
     setNav({ title: t.name, right: searchBtn() });
-    const startSlug = (pages.find(p => p.start) || pages[0] || {}).slug;
+    const own = pages.filter(p => !p.linked), startSlug = (own.find(p => p.start) || own[0] || {}).slug;
     const idx = await getIndex(), dueN = dueOf(reviewPool(idx, tab)).length;
     const symN = idx.pages.filter(p => p.tab === tab).reduce((n, p) => n + p.symptoms.length, 0);
     const fieldN = idx.pages.filter(p => p.tab === tab).reduce((n, p) => n + (p.field || []).length, 0);
@@ -118,12 +118,12 @@
     pages.forEach((p, i) => {
       const g = p.group || null;
       if (!groups.length || groups[groups.length - 1].g !== g) groups.push({ g, rows: [] });
-      const f = progressOf(tab, p.slug);
+      const f = progressOf(p.tab, p.slug);
       const status = f >= 0.98 ? html`<span class="row-done" aria-label="Finished">✓</span>` : f > 0.02 ? html`<span class="row-value">${Math.round(f * 100)}%</span>` : '';
-      const ip = pageOf(idx, `${tab}/${p.slug}`), ch = ip ? changesOf(ip) : null;
-      groups[groups.length - 1].rows.push(html`<a class="hn-row" href="#/${tab}/${p.slug}"><span class="row-num">${i + 1}</span>
+      const ip = pageOf(idx, `${p.tab}/${p.slug}`), ch = ip ? changesOf(ip) : null;
+      groups[groups.length - 1].rows.push(html`<a class="hn-row" href="#/${p.tab}/${p.slug}"><span class="row-num">${i + 1}</span>
         <span class="row-main"><span class="row-title">${p.title}</span>${p.summary ? html`<span class="row-sub">${p.summary}</span>` : ''}
-        <span class="row-meta">${ch && ch.length ? html`<span class="new-tag">${ch.length} new</span>` : ''}${p.slug === startSlug && pages.length > 1 ? html`<span class="start-badge">Start here</span>` : ''}${p.updated ? html`<span>Updated ${fmtDate(p.updated)}</span>` : ''}</span></span>
+        <span class="row-meta">${ch && ch.length ? html`<span class="new-tag">${ch.length} new</span>` : ''}${p.linked ? html`<span class="from-tag" data-tab="${p.tab}">In ${TAB[p.tab] ? TAB[p.tab].name : p.tab}</span>` : ''}${!p.linked && p.slug === startSlug && pages.length > 1 ? html`<span class="start-badge">Start here</span>` : ''}${p.updated ? html`<span>Updated ${fmtDate(p.updated)}</span>` : ''}</span></span>
         ${status}${chev()}</a>`);
     });
     render(main, html`<div class="hn-page"><h1 class="large-title">${t.name}</h1><p class="subtitle">${t.blurb}</p>

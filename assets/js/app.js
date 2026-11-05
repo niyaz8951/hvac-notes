@@ -82,6 +82,7 @@
   /* ================= content ================= */
 
   const loadNav = tab => D.nav(tab);
+  const loadToc = tab => D.toc(tab);   // own pages + chapters linked from another notebook (each { …meta, tab })
   const loadPage = (tab, slug) => D.page(tab, slug);
 
   /* Markdown with KaTeX maths: code is protected first so "$" inside it is never maths. The HTML string goes
@@ -609,7 +610,7 @@
   const canPublish = () => !!(Core.user && (Core.user.is_super || (Core.user.rights || []).indexOf('edit') >= 0));
 
   async function renderSidebar() {
-    const navs = await Promise.all(TABS.map(t => loadNav(t.id)));
+    const navs = await Promise.all(TABS.map(t => loadToc(t.id)));
     const { view, tab, slug } = where;
     const link = (href, t, name, ic, cur, count, cls) => html`<a class="side-link" href="${href}" data-tab="${t}" aria-current="${cur ? 'page' : null}">
       <span class="icon-tile ${cls || ''}">${icon(ic)}</span>${name}${count ? html`<span class="side-count">${count}</span>` : ''}</a>`;
@@ -631,7 +632,7 @@
     if (canPublish()) parts.push(link('#/publish', 'library', 'Publish', 'i-upload', view === 'publish', '', 'it-publish'));
     if (tab && TAB[tab]) {
       const pages = navs[TABS.findIndex(t => t.id === tab)], n = notesCount(tab);
-      if (pages.length || n) parts.push(html`<p class="side-label">${TAB[tab].name}</p><ul class="side-pages">${pages.map(p => html`<li><a href="#/${tab}/${p.slug}" aria-current="${p.slug === slug ? 'page' : null}">${p.title}</a></li>`)}${n ? html`<li><a href="#/notebook/${tab}" aria-current="${view === 'notebook' ? 'page' : null}">Highlights &amp; Notes<span class="side-count">${n}</span></a></li>` : ''}</ul>`);
+      if (pages.length || n) parts.push(html`<p class="side-label">${TAB[tab].name}</p><ul class="side-pages">${pages.map(p => html`<li><a href="#/${p.tab}/${p.slug}" aria-current="${p.tab === tab && p.slug === slug ? 'page' : null}">${p.title}${p.linked ? html`<span class="side-from">${TAB[p.tab] ? TAB[p.tab].name : p.tab}</span>` : ''}</a></li>`)}${n ? html`<li><a href="#/notebook/${tab}" aria-current="${view === 'notebook' ? 'page' : null}">Highlights &amp; Notes<span class="side-count">${n}</span></a></li>` : ''}</ul>`);
     }
     render(sidebar, parts);
     sidebar.querySelector('[data-act="search"]').onclick = () => openSearch();
@@ -831,7 +832,7 @@
   const PATH_ORDER = ['theory', 'refrigeration', 'chillers', 'ahu', 'fcu', 'systems'];
   function upNext(idx, navs, skip) {
     const meta = {};
-    TABS.forEach((t, i) => navs[i].forEach(m => { meta[`${t.id}/${m.slug}`] = m; }));
+    TABS.forEach((t, i) => navs[i].forEach(m => { if (!m.linked) meta[`${t.id}/${m.slug}`] = m; }));
     const chapters = idx.pages.filter(p => p.layout !== 'cards' && PATH_ORDER.includes(p.tab))
       .sort((a, b) => PATH_ORDER.indexOf(a.tab) - PATH_ORDER.indexOf(b.tab));
     const done = r => progressOf(...r.split('/')) >= 0.98;
@@ -853,7 +854,7 @@
     html, render, clone, icon, D, $, root, main, navbar, sidebar, tabbar, hlBar, sheet, sheetBody, backdrop, reduced,
     slugify, uid, clamp, debounce, fmtDate, fmtMonth, one, chev, settings, saveView, bindMine,
     mine: () => ({ positions, highlights, cardState, reviewState, practiceState, seen }),
-    saveReview, savePractice, toast, copyText, loadNav, loadPage, renderMarkdown, renderInline, autoColor, cardColor,
+    saveReview, savePractice, toast, copyText, loadNav, loadToc, loadPage, renderMarkdown, renderInline, autoColor, cardColor,
     cardNotesOf, notesCount, cardEntry, cardify, paintCard, openCard, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, enhance, fieldItem, markWide, loadImages,
     applySettings, updateThemeColor, backBtn, searchBtn, focusBtn, setNav, watchLargeTitle, renderTabbar, where, setActive,
     canPublish, renderSidebar, discussions, forgetIndex, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,

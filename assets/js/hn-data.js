@@ -3,7 +3,9 @@
  * nothing internal is kept on the device.
  *
  *   HNData.library()            version, every notebook's nav, where the index and timeline are
- *   HNData.nav(tab)             a notebook's pages in reading order
+ *   HNData.nav(tab)             a notebook's own pages in reading order
+ *   HNData.toc(tab)             what the notebook lists: its own pages plus linked chapters (a nav.json entry
+ *                               { "link": "theory/slug" } shows another notebook's page here; the page keeps one home)
  *   HNData.page(tab, slug)      a page's Markdown
  *   HNData.pages(routes)        several pages at once (routes "tab/slug", null = all)
  *   HNData.index() / growth()   the search index and the growth timeline (JSON files in the bucket)
@@ -18,7 +20,7 @@ window.HNData = (function () {
   const MIME = { svg: 'image/svg+xml', webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' };
 
   let lib = null, libP = null;
-  const navs = {}, pageCache = {}, imgCache = new Map(), textCache = new Map();
+  const navs = {}, links = {}, pageCache = {}, imgCache = new Map(), textCache = new Map();
   let IDX = null, GROWTH;
 
   function library() {
@@ -28,17 +30,28 @@ window.HNData = (function () {
       Object.entries(lib.navs || {}).forEach(([tab, text]) => {
         let list = [];
         try { list = JSON.parse(text); } catch (e) { list = []; }
-        navs[tab] = Array.isArray(list) ? list.filter(p => p && p.slug && p.title) : [];
+        list = Array.isArray(list) ? list : [];
+        navs[tab] = list.filter(p => p && p.slug && p.title);
+        links[tab] = list.filter(p => p && (p.slug || (typeof p.link === 'string' && /^[a-z0-9-]+\/[a-z0-9-]+$/.test(p.link))));
       });
       return lib;
     }, err => { libP = null; throw err; });
     return libP;
   }
   async function nav(tab) { await library(); return navs[tab] || []; }
+  // Own pages as { …meta, tab }, linked chapters as the target page's meta with its own tab and linked: true.
+  async function toc(tab) {
+    await library();
+    return (links[tab] || []).map(e => {
+      if (e.slug) return e.title ? { ...e, tab } : null;
+      const [t, s] = e.link.split('/'), m = (navs[t] || []).find(x => x.slug === s);
+      return m ? { ...m, tab: t, linked: true, start: false, group: e.group !== undefined ? e.group : m.group } : null;
+    }).filter(Boolean);
+  }
   // After a publish from inside the reader: forget everything read from the library (the user's own data stays).
   function reset() {
     lib = null; libP = null; IDX = null; GROWTH = undefined;
-    Object.keys(navs).forEach(k => delete navs[k]); Object.keys(pageCache).forEach(k => delete pageCache[k]);
+    Object.keys(navs).forEach(k => delete navs[k]); Object.keys(links).forEach(k => delete links[k]); Object.keys(pageCache).forEach(k => delete pageCache[k]);
     imgCache.clear(); textCache.clear();
   }
 
@@ -214,7 +227,7 @@ window.HNData = (function () {
   };
 
   return {
-    BUCKET, library, nav, page, pages, index, growth, imageUrl, text, my, loadMine, save, flush, shared, loadShared, remove, replies, reset,
+    BUCKET, library, nav, toc, page, pages, index, growth, imageUrl, text, my, loadMine, save, flush, shared, loadShared, remove, replies, reset,
     onSaveError(fn) { onError = fn; },
     importBackup: data => Api.rpc('hvac_notes_my_import', { p_data: data })
   };

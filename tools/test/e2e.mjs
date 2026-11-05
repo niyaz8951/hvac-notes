@@ -54,7 +54,10 @@ ok(admin.problems.length === 0, 'Publish page: no console errors or CSP reports'
 const user = await session('demo_user', 'dark');
 await user.goto(BASE + '/hvac-notes/');
 await user.waitForSelector('.shelf .book-item');
-ok((await user.$$('.shelf .book-item')).length === 6, 'home shows the six notebook covers');
+ok((await user.$$('.shelf .book-item')).length === 7, 'home shows the seven notebook covers');
+await user.goto(BASE + '/hvac-notes/#/refrigeration'); await user.waitForSelector('.hn-row .row-title');
+const linkRow = await user.$eval('a.hn-row[href="#/theory/test-basics"]', a => a.textContent).catch(() => '');
+ok(/Test basics/.test(linkRow) && /In Theory/.test(linkRow), 'a linked chapter shows in another notebook and opens its one home');
 await user.goto(BASE + '/hvac-notes/#/theory/test-basics');
 await user.waitForSelector('#book .katex');
 await user.waitForFunction(() => { const i = document.querySelector('#book figure img'); return i && i.src.startsWith('blob:') && i.complete; }, null, { timeout: 10000 });

@@ -12,7 +12,7 @@ DB=$(echo "$PGARGS" | sed -n 's/.*-d \([^ ]*\).*/\1/p')
 ADMIN=$(echo "$PGARGS" | sed "s/-d $DB/-d postgres/")
 q() { psql $PGARGS -q -v ON_ERROR_STOP=1 "$@"; }
 psql $ADMIN -qc "drop database if exists $DB" ; psql $ADMIN -qc "create database $DB"
-q -f "$DAME/tools/test/supabase-stub.sql"
+q -f "$DAME/dev/test/supabase-stub.sql"
 for f in "$DAME"/db/core/0*.sql; do q -f "$f" > /dev/null; done
 q -f "$DAME/db/core/seed-staging.sql" > /dev/null
 # The owner registers the tile in the admin page (Tiles > New tile): id, name, the right 'edit', switched on.

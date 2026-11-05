@@ -817,6 +817,9 @@ body.no-scroll .fx { overscroll-behavior: contain; }
 .up-next .cover { opacity: .85; }
 .new-tag { color: var(--tint); font-weight: 600; }
 .new-tag.soft { color: var(--text2); font-weight: 500; }
+/* A chapter listed here whose home is another notebook */
+.from-tag { color: var(--cover, var(--text2)); font-weight: 600; }
+.side-from { margin-left: 6px; font-size: .78em; color: var(--text2); }
 .row-meta .new-tag { color: var(--tab-c, var(--tint)); }
 .book .new-pill { display: inline-block; vertical-align: .2em; margin-left: .35em; padding: .1em .5em; border-radius: 999px; background: color-mix(in srgb, var(--tint) 16%, transparent); color: var(--tint); font: 600 .5em/1.5 var(--ui); letter-spacing: .02em; text-transform: uppercase; }
 .book .grew { margin: -.6em 0 1.1em; font: 500 .78em/1.45 var(--ui); }
