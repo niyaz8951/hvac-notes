@@ -10,6 +10,7 @@
 
 - 2026-11-05 - New notebook **Refrigeration** in the code (reader, cover, icon, learning path, Publish check). No SQL. Asset links bumped to `?v=20261105a`. Code rules and the page check on the invented library pass; the browser test was not run in this session (no local Postgres).
 - 2026-11-05 - Linked chapters (`{ "link": "tab/slug" }` in `nav.json`): a notebook lists another notebook's article without copying or moving it. Reader, sidebar, covers, Publish check; fixture and browser test added (`refrigeration` links `theory/test-basics`). `tools/test/db.sh` now reads the stub from `dame-hub/dev/test/` (moved there in the admin repo). Full local test passes. Asset links `?v=20261105b`.
+- 2026-11-05 - Reading quick wins: new page colour **Gold** (mustard text on a warm near-black page; Themes & Settings > Page). Phones: slightly wider line spacing and paragraph gaps, smaller tables and headings, no text inflation on rotate; better line breaks on all screens. Secondary text, lines and cards now follow the chosen page colour (they kept DAME's day/night colours before). CSS and one line in `app.js`; no SQL, nothing stored beyond the existing view setting. Code rules pass; checked by screenshot at phone width; the browser test was not run (no local Postgres). Asset links `?v=20261105c`.
 
 ## SQL applied
 | File | Staging | Live |

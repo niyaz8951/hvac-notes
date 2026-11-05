@@ -22,7 +22,7 @@
   const BOOKS = ['theory', 'refrigeration', 'ashrae', 'systems'].map(id => TAB[id]);
   const COLORS = ['yellow', 'green', 'blue', 'pink', 'purple'];
   const THEMES = [
-    { id: 'auto', name: 'Auto' }, { id: 'light', name: 'White' }, { id: 'sepia', name: 'Sepia' }, { id: 'gray', name: 'Gray' }, { id: 'dark', name: 'Night' }
+    { id: 'auto', name: 'Auto' }, { id: 'light', name: 'White' }, { id: 'sepia', name: 'Sepia' }, { id: 'gray', name: 'Gray' }, { id: 'dark', name: 'Night' }, { id: 'gold', name: 'Gold' }
   ];
   const SIZES = [15, 16, 17, 18, 19, 20, 22, 24, 26, 28];
   const SITE = 'HVAC Notes';

@@ -1,7 +1,7 @@
 /* HVAC Notes reader. Loaded after /dame-hub/core/v1/theme.css.
    Everything around the text (bars, lists, buttons, sheets) uses the core theme tokens and follows DAME's day and night.
    The reading area keeps the reader's own look, by the owner's decision for this tile: the page colours a reader picks
-   (White, Sepia, Gray, Night; Auto follows DAME), highlighter colours, card hues and book covers. Those values are
+   (White, Sepia, Gray, Night, Gold; Auto follows DAME), highlighter colours, card hues and book covers. Those values are
    defined in this file only, and only inside the reading area. */
 
 /* ---------- reading font (bundled, SIL Open Font License) ---------- */
@@ -87,6 +87,20 @@
   color-scheme: dark;
 }
 
+/* The reader's short names re-read the page colour's tokens inside the reading area (otherwise they keep DAME's day/night values) */
+:root[data-view="reader"][data-paper] body > :not(#topbar) { --text2: var(--text-2); --text3: var(--text-3); --sep: var(--line); --card: var(--surface); --bar: var(--glass); }
+/* Gold: mustard text on a warm near-black page (body about 11:1 contrast); headings and bold a brighter gold, links amber */
+:root[data-view="reader"][data-paper="gold"] { --paper: #0E0D0A; }
+:root[data-view="reader"][data-paper="gold"] body > :not(#topbar) {
+  --bg: #0A0907; --surface: #17150F; --surface-2: #201D15; --text: #F6D683; --text-2: #B59C60; --text-3: #7F6D44; --line: rgba(230, 195, 106, .16); --line-strong: rgba(230, 195, 106, .3); --link: #FFB547;
+  --paper: #0E0D0A; --ink: #E6C36A; --raised: #262217; --glass: rgba(14, 13, 10, .84); --tint: #E8B23A; --brand-strong: #F2C14E;
+  --fill: rgba(230, 195, 106, .1); --fill2: rgba(230, 195, 106, .18);
+  --kmix: 30%; --kline: 46%; --hl-yellow: rgba(255, 170, 0, .3); --hl-green: rgba(48, 209, 88, .28); --hl-blue: rgba(10, 132, 255, .38); --hl-pink: rgba(255, 55, 95, .34); --hl-purple: rgba(191, 90, 242, .38);
+  color-scheme: dark;
+}
+:root[data-view="reader"][data-paper="gold"] .book strong { color: var(--text); }
+:root[data-view="reader"][data-paper="gold"] ::selection { background: rgba(232, 178, 58, .32); }
+
 /* Notebook covers: shades of the Daikin navy, mixed with the theme's accents */
 /* Notebook covers keep the old site's colours (the reader's own look) */
 [data-tab="theory"] { --cover: #4B44C6; }
@@ -114,6 +128,7 @@ body.hn label { font-weight: inherit; margin-bottom: 0; }
 :root.pages-mode, :root.pages-mode body { overflow: hidden; height: 100%; overscroll-behavior: none; }
 body.no-scroll { overflow: hidden; }
 button { font: inherit; color: inherit; -webkit-user-select: none; user-select: none; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 img, svg { max-width: 100%; }
 kbd, pre { font-family: var(--mono); font-size: .86em; }
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
@@ -299,6 +314,8 @@ button.tab { background: none; border: 0; cursor: pointer; }
 .book ul, .book ol { padding-left: 1.3em; }
 .book li { margin: .25em 0; }
 .book li::marker { color: var(--text2); }
+.book :is(p, li, figcaption) { text-wrap: pretty; }
+.book :is(h1, h2, h3, h4) { text-wrap: balance; }
 .book strong { font-weight: 650; }
 .book hr { border: 0; height: 1px; background: var(--sep); margin: 2.2em 0; }
 .book a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: .16em; }
@@ -480,13 +497,13 @@ mark.hl.new { animation: paint .45s var(--hn-ease) both; }
 .size-ctl button:active { background: var(--fill2); }
 .size-ctl .smaller { font-size: 15px; } .size-ctl .larger { font-size: 24px; }
 .size-ctl output { font: 500 13px var(--ui); color: var(--text2); min-width: 54px; text-align: center; }
-.themes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.themes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .theme-btn { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; font: 500 12px var(--ui); color: var(--text); cursor: pointer; }
-.theme-btn .tsw { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font: 600 17px var(--serif); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.theme-btn .tsw { width: min(46px, 100%); height: auto; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font: 600 17px var(--serif); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .theme-btn[aria-pressed="true"] .tsw { box-shadow: 0 0 0 2.5px var(--card), 0 0 0 4.5px var(--tint); }
 /* previews of the page colours (the reader's own look) */
 .tsw-auto { background: linear-gradient(135deg, #FFFFFF 50%, #07182A 50%); color: #8CA0B0; }
-.tsw-light { background: #FFFFFF; color: #12283A; } .tsw-sepia { background: #F8F1E3; color: #3B2F24; } .tsw-gray { background: #48484A; color: #F2F2F7; } .tsw-dark { background: #07182A; color: #DCE6EE; }
+.tsw-light { background: #FFFFFF; color: #12283A; } .tsw-sepia { background: #F8F1E3; color: #3B2F24; } .tsw-gray { background: #48484A; color: #F2F2F7; } .tsw-dark { background: #07182A; color: #DCE6EE; } .tsw-gold { background: #0E0D0A; color: #E6C36A; }
 .sheet-quote { margin: 4px 0 14px; padding: 2px 0 2px 12px; border-left: 3px solid var(--sw, var(--tint)); font: 400 17px/1.5 var(--serif); color: var(--text); }
 .sheet-swatches { display: flex; gap: 10px; margin: 0 0 14px; }
 .sheet-swatches .swatch { width: 40px; height: 40px; }
@@ -540,6 +557,17 @@ mark.hl.new { animation: paint .45s var(--hn-ease) both; }
 .sr-hint { padding: 24px 8px; color: var(--text2); text-align: center; }
 .search mark { background: none; color: var(--tint); font-weight: 600; }
 
+
+/* ---------- phones: reading ---------- */
+@media (max-width: 639px) {
+  .book { padding: 6px 20px 0; line-height: 1.68; }
+  .book p, .book ul, .book ol { margin-bottom: 1em; }
+  .book h1 { font-size: 1.5em; }
+  .book h2 { font-size: 1.2em; margin-top: 1.7em; }
+  .book table { font-size: .78em; }
+  .book th, .book td { padding: 7px 10px 7px 0; }
+  .callout { padding: 12px 13px; }
+}
 
 /* ---------- wider screens ---------- */
 @media (min-width: 640px) {
