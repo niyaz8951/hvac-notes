@@ -1011,3 +1011,18 @@ mark.hl[data-replies]::after { content: attr(data-replies); display: inline-bloc
 .hn-publish .card { margin-bottom: 16px; }
 .hn-publish .card h2 { margin-top: 0; }
 .hn-publish .loading-veil { position: static; padding: 40px 0; }
+
+/* Who can read (2026-11-06): drafts, notebooks for selected users, links to pages a reader cannot open */
+.draft-tag { display: inline-block; padding: 0 6px; border-radius: 5px; background: var(--warning-soft); color: var(--warning); font: 600 11px/18px var(--ui); letter-spacing: .02em; text-transform: uppercase; vertical-align: 1px; }
+.side-pages .draft-tag { margin-left: 6px; }
+.aud-tag { color: var(--text2); font-weight: 600; white-space: nowrap; }
+.link-off { color: inherit; text-decoration: underline dotted var(--text2); text-underline-offset: 3px; cursor: help; }
+.book .vis-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin: .2em 0 1.1em; padding: 8px 10px; border-radius: 10px; background: var(--fill); font: 400 .78em/1.45 var(--ui); color: var(--text2); }
+.book .vis-bar.draft { background: var(--warning-soft); color: var(--warning); }
+.book .vis-bar .vis-text { flex: 1 1 12em; }
+.book .vis-bar .btn { font-size: 13px; }
+.vis-row .hn-row { flex-wrap: wrap; gap: 10px; }
+.vis-row .vis-seg { flex: 0 0 auto; min-width: 230px; }
+@media (max-width: 520px) { .vis-row .vis-seg { flex: 1 1 100%; } }
+.vis-row .hn-row { cursor: default; }
+.vis-row .row-sub { display: block; white-space: normal; overflow: visible; -webkit-line-clamp: unset; text-overflow: clip; }

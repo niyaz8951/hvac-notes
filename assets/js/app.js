@@ -402,6 +402,11 @@
       if (/^https?:/.test(h)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; a.classList.add('ext'); return; }
       if (/^(#|mailto:|tel:)/.test(h)) return;
       const m = h.replace(/^\.\//, '').match(/^(?:\.\.\/([a-z0-9-]+)\/)?([a-z0-9-]+)(?:\.md)?(?:#([\w-]+))?$/i);
+      if (m && !D.known(`${m[1] || tab}/${m[2]}`)) {
+        // A page this reader cannot open (a draft, or a closed notebook): the words stay, the link goes.
+        const off = document.createElement('span'); off.className = 'link-off'; off.title = 'Not available yet';
+        off.append(...a.childNodes); a.replaceWith(off); return;
+      }
       if (m) a.setAttribute('href', `#/${m[1] || tab}/${m[2]}${m[3] ? '/' + m[3] : ''}`);
       else a.removeAttribute('href');
     });
@@ -577,8 +582,12 @@
     ltObs.observe(lt);
   }
 
+  // Notebooks this reader may open (a notebook for selected users is left off the shelf, the tab bar and the sidebar).
+  const shown = list => list.filter(t => !D.closed(t.id));
+  const draftTag = route => D.draft(route) ? html`<span class="draft-tag">Draft</span>` : '';
+
   function renderTabbar() {
-    const items = [{ id: 'library', name: 'Home', icon: 'i-home', href: '#/' }, ...PRODUCTS.map(t => ({ id: t.id, name: t.name, icon: t.icon, href: `#/${t.id}` }))];
+    const items = [{ id: 'library', name: 'Home', icon: 'i-home', href: '#/' }, ...shown(PRODUCTS).map(t => ({ id: t.id, name: t.name, icon: t.icon, href: `#/${t.id}` }))];
     render(tabbar, items.map(b => html`<a class="tab" href="${b.href}" data-tab="${b.id}">${icon(b.icon)}<span>${b.name}</span></a>`),
       html`<button class="tab" type="button" data-act="search">${icon('i-search')}<span>Search</span></button>`);
     tabbar.querySelector('[data-act="search"]').addEventListener('click', () => openSearch());
@@ -619,9 +628,9 @@
       html`<button class="side-search" type="button" data-act="search">${icon('i-search')}<span>Search</span></button>`,
       link('#/', 'library', 'Home', 'i-home', view === 'library'),
       html`<p class="side-label">Products</p>`,
-      PRODUCTS.map(t => link(`#/${t.id}`, t.id, t.name, t.icon, tab === t.id, count(t))),
+      shown(PRODUCTS).map(t => link(`#/${t.id}`, t.id, t.name, t.icon, tab === t.id, count(t))),
       html`<p class="side-label">Books</p>`,
-      BOOKS.map(t => link(`#/${t.id}`, t.id, t.name, t.icon, tab === t.id, count(t))),
+      shown(BOOKS).map(t => link(`#/${t.id}`, t.id, t.name, t.icon, tab === t.id, count(t))),
       html`<p class="side-label">Library</p>`,
       link('#/review', 'library', 'Review', 'i-review', view === 'review', '', 'it-review'),
       link('#/discussions', 'library', 'Discussions', 'i-chat', view === 'discussions', unansweredCount() || '', 'it-notes'),
@@ -632,7 +641,7 @@
     if (canPublish()) parts.push(link('#/publish', 'library', 'Publish', 'i-upload', view === 'publish', '', 'it-publish'));
     if (tab && TAB[tab]) {
       const pages = navs[TABS.findIndex(t => t.id === tab)], n = notesCount(tab);
-      if (pages.length || n) parts.push(html`<p class="side-label">${TAB[tab].name}</p><ul class="side-pages">${pages.map(p => html`<li><a href="#/${p.tab}/${p.slug}" aria-current="${p.tab === tab && p.slug === slug ? 'page' : null}">${p.title}${p.linked ? html`<span class="side-from">${TAB[p.tab] ? TAB[p.tab].name : p.tab}</span>` : ''}</a></li>`)}${n ? html`<li><a href="#/notebook/${tab}" aria-current="${view === 'notebook' ? 'page' : null}">Highlights &amp; Notes<span class="side-count">${n}</span></a></li>` : ''}</ul>`);
+      if (pages.length || n) parts.push(html`<p class="side-label">${TAB[tab].name}</p><ul class="side-pages">${pages.map(p => html`<li><a href="#/${p.tab}/${p.slug}" aria-current="${p.tab === tab && p.slug === slug ? 'page' : null}">${p.title}${p.linked ? html`<span class="side-from">${TAB[p.tab] ? TAB[p.tab].name : p.tab}</span>` : ''}${draftTag(`${p.tab}/${p.slug}`)}</a></li>`)}${n ? html`<li><a href="#/notebook/${tab}" aria-current="${view === 'notebook' ? 'page' : null}">Highlights &amp; Notes<span class="side-count">${n}</span></a></li>` : ''}</ul>`);
     }
     render(sidebar, parts);
     sidebar.querySelector('[data-act="search"]').onclick = () => openSearch();
@@ -857,7 +866,7 @@
     saveReview, savePractice, toast, copyText, loadNav, loadToc, loadPage, renderMarkdown, renderInline, autoColor, cardColor,
     cardNotesOf, notesCount, cardEntry, cardify, paintCard, openCard, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, enhance, fieldItem, markWide, loadImages,
     applySettings, updateThemeColor, backBtn, searchBtn, focusBtn, setNav, watchLargeTitle, renderTabbar, where, setActive,
-    canPublish, renderSidebar, discussions, forgetIndex, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
+    canPublish, renderSidebar, discussions, shown, draftTag, forgetIndex, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
     changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY
   };
   // Functions part 2 provides, used above.

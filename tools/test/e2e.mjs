@@ -1,7 +1,8 @@
 // Browser test for HVAC Notes (test harness only). Needs tools/test/mock.mjs running on :8080 over a database built by
 // tools/test/db.sh, and the invented library zipped at $FIXTURE (tools/test/run.sh does all of it).
-// Publishes the invented library as demo_admin, reads it as demo_user, checks refusals for demo_none and for a reader on
-// the Publish page, and fails on any console error or Content Security Policy report.
+// Publishes the invented library as demo_admin (tile admin), approves the drafts, opens a notebook to selected users,
+// reads it as demo_user, checks refusals for demo_none and for a reader on the Publish page, and fails on any console
+// error or Content Security Policy report.
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -38,10 +39,13 @@ await admin.setInputFiles('#zip', FIXTURE);
 await admin.waitForSelector('#publish');
 ok(/Pages added \(4\)/i.test(await text(admin, '#review')), 'publish plan lists 4 new pages');
 ok(/No errors/.test(await text(admin, '#review')), 'invented library passes the check');
+ok(/arrive as drafts/.test(await text(admin, '#review')), 'the plan says new pages arrive as drafts');
 await admin.click('#publish'); await admin.click('.sheet .actions button.primary');
 await admin.waitForFunction(() => /Version 1/.test(document.querySelector('#lib').textContent), null, { timeout: 20000 });
 ok(sql("select version from hvac_notes.library") === '1', 'library is at version 1');
-ok(sql("select count(*) from storage.objects where bucket_id = 'hvac-notes'") === '3', 'bucket holds the image, the index and the timeline');
+ok(sql("select count(*) from storage.objects where bucket_id = 'hvac-notes'") === '1', 'bucket holds the image only (index and timeline are in the database)');
+ok(sql("select string_agg(status, ',') from (select distinct status from hvac_notes.pages) x") === 'draft' && sql("select count(*) from hvac_notes.pages where idx is not null") === '4', 'new pages are drafts, each with its index entry');
+ok(/4 drafts waiting/.test(await text(admin, '#lib')), 'Publish lists the drafts waiting for approval');
 // export, then the same zip again: nothing to publish
 const [dl] = await Promise.all([admin.waitForEvent('download'), admin.click('#export')]);
 const back = FIXTURE.replace(/\.zip$/, '-export.zip'); await dl.saveAs(back);
@@ -50,9 +54,50 @@ await admin.waitForSelector('#review .notice');
 ok(/Nothing to publish/.test(await text(admin, '#review')), 'the export uploaded again changes nothing');
 ok(admin.problems.length === 0, 'Publish page: no console errors or CSP reports' + (admin.problems.length ? ': ' + admin.problems.join(' | ') : ''));
 
-// 2. a reader
+// 2. drafts: the reader gets none; the tile admin approves page by page
 const user = await session('demo_user', 'dark');
+const rpc = (pg, name, args) => pg.evaluate(async ([n, a]) => { try { return await Api.rpc(n, a); } catch (e) { return 'ERR:' + e.code; } }, [name, args || {}]);
 await user.goto(BASE + '/hvac-notes/');
+await user.waitForSelector('main .empty');
+ok(/No Pages Yet/.test(await text(user, 'main')), 'while every page is a draft, a reader has nothing to read');
+ok(await rpc(user, 'hvac_notes_page', { p_tab: 'theory', p_slug: 'test-basics' }) === 'ERR:NOT_FOUND', 'a reader cannot open a draft (NOT_FOUND)');
+ok((await rpc(user, 'hvac_notes_index')).pages.length === 0 && (await rpc(user, 'hvac_notes_growth')).days.length === 0, 'a reader gets no draft in the index or the timeline');
+const approve = async (route) => {
+  await admin.goto(BASE + '/hvac-notes/#/' + route); await admin.waitForSelector('#vis-bar.draft [data-vis="approved"]');
+  await admin.click('#vis-bar [data-vis="approved"]'); await admin.waitForSelector('#vis-bar:not(.draft) [data-vis="draft"]');
+};
+await admin.goto(BASE + '/hvac-notes/#/theory'); await admin.waitForSelector('.hn-row .draft-tag');
+ok((await admin.$$('main .hn-row .draft-tag')).length === 2 && (await admin.$$('.side-pages .draft-tag')).length === 2, 'the editor sees drafts tagged in the notebook and the sidebar');
+await approve('theory/test-second');
+ok(sql("select status from hvac_notes.pages where slug = 'test-second'") === 'approved', 'Approve on the page opens it to readers');
+await user.goto(BASE + '/hvac-notes/#/theory/test-second'); await user.waitForSelector('#book .video-card');
+ok(await user.$eval('#book', b => !!b.querySelector('.link-off') && !b.querySelector('a[href="#/theory/test-basics"]')), 'a link to a draft shows as text, not a link');
+ok(!(await user.$('#vis-bar')), 'a reader sees no draft bar or Hide button');
+await user.goto(BASE + '/hvac-notes/#/refrigeration'); await user.waitForSelector('main .hn-page');
+ok(!(await user.$('a.hn-row[href="#/theory/test-basics"]')), 'a linked chapter whose home is a draft is not listed');
+for (const r of ['theory/test-basics', 'chillers/test-wall', 'chillers/terms']) await approve(r);
+await user.goto(BASE + '/hvac-notes/#/theory/test-second'); await user.reload(); await user.waitForSelector('#book .video-card');
+ok(!!(await user.$('#book a[href="#/theory/test-basics"]')), 'once approved, the link works');
+ok(sql("select count(*) from core.audit where tile_id = 'hvac-notes' and action = 'page_approved'") === '4', 'every approval is audited');
+// notebook for selected users: chillers
+await admin.goto(BASE + '/hvac-notes/#/chillers'); await admin.waitForSelector('#vis-row [data-aud="selected"]');
+await admin.click('#vis-row [data-aud="selected"]'); await admin.click('.sheet .actions button.primary');
+await admin.waitForSelector('#vis-row [data-aud="selected"][aria-pressed="true"]');
+ok(/nb_chillers/.test(await text(admin, '#vis-row')) && sql("select audience from hvac_notes.notebooks where tab = 'chillers'") === 'selected', 'the tile admin opens Chillers to selected users (right nb_chillers)');
+await user.goto(BASE + '/hvac-notes/'); await user.reload(); await user.waitForSelector('.shelf .book-item');
+ok((await user.$$('.shelf .book-item')).length === 6 && !(await user.$('.shelf .book-item[data-tab="chillers"]')) && !(await user.$('#tabbar [data-tab="chillers"]')), 'without the right, Chillers is off the shelf and the tab bar');
+await user.goto(BASE + '/hvac-notes/#/chillers/test-wall'); await user.waitForSelector('main .empty');
+ok(/Not Found/.test(await text(user, 'main')), 'a page of a closed notebook is Not Found');
+sql("update core.tile_access set rights = array['nb_chillers'] where tile_id = 'hvac-notes' and user_id = (select id from core.profiles where username = 'demo_user')");
+await user.goto(BASE + '/hvac-notes/'); await user.reload(); await user.waitForSelector('.shelf .book-item[data-tab="chillers"]');
+ok(true, 'with the right nb_chillers, the reader sees Chillers');
+sql("update core.tile_access set rights = '{}' where tile_id = 'hvac-notes' and user_id = (select id from core.profiles where username = 'demo_user')");
+await admin.click('#vis-row [data-aud="all"]'); await admin.click('.sheet .actions button.primary');
+await admin.waitForSelector('#vis-row [data-aud="all"][aria-pressed="true"]');
+ok(sql("select count(*) from hvac_notes.notebooks") === '0', 'back to all users');
+
+// 3. a reader
+await user.goto(BASE + '/hvac-notes/'); await user.reload();
 await user.waitForSelector('.shelf .book-item');
 ok((await user.$$('.shelf .book-item')).length === 7, 'home shows the seven notebook covers');
 await user.goto(BASE + '/hvac-notes/#/refrigeration'); await user.waitForSelector('.hn-row .row-title');
@@ -132,7 +177,7 @@ const refused = await user.evaluate(async () => { try { await Api.rpc('hvac_note
 ok(refused === 'NO_RIGHT', 'publish functions refuse a reader (NO_RIGHT)');
 ok(user.problems.length === 0, 'reader: no console errors or CSP reports' + (user.problems.length ? ': ' + user.problems.join(' | ') : ''));
 
-// 3. the editor sees the reader's highlight, note and card note with his name, and removes the highlight
+// 4. the editor sees the reader's highlight, note and card note with his name, and removes the highlight
 await admin.goto(BASE + '/hvac-notes/#/theory/test-basics'); await admin.reload();
 await admin.waitForSelector('#book mark.hl.other.has-note');
 await admin.click('#book mark.hl.other'); await admin.waitForSelector('#sheet:not([hidden]) .sheet-by');
@@ -165,13 +210,29 @@ await admin.waitForSelector('#seg-who');
 ok(/Demo User/.test(await text(admin, 'main')), 'notebook "Everyone" lists notes with names');
 ok(admin.problems.length === 0, 'editor reading: no console errors or CSP reports' + (admin.problems.length ? ': ' + admin.problems.join(' | ') : ''));
 
-// 4. phone width
+// 5. phone width
 const phone = await session('demo_user', 'light', 390);
 await phone.goto(BASE + '/hvac-notes/#/theory/test-basics');
 await phone.waitForSelector('#book .katex');
 ok(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'phone width 390 px: no sideways scroll');
 
-// 5. no tile
+// 6. the move (live has its index and timeline in bucket files until the owner presses Move now)
+const keepGrowth = sql("select growth::text from hvac_notes.library");
+sql("update hvac_notes.library set index_path = '_library/index-old.json', growth_path = '_library/growth-old.json', growth = null");
+await phone.goto(BASE + '/hvac-notes/'); await phone.reload(); await phone.waitForSelector('.shelf .book-item');
+ok(await rpc(phone, 'hvac_notes_index') === null, 'before the move a reader gets no stored index');
+await phone.keyboard.press('/'); await phone.fill('#search-input', 'tqx'); await phone.waitForSelector('#search-results a');
+ok(/Test basics/.test(await text(phone, '#search-results')), 'before the move search still works (index built from the pages he may read)');
+await phone.keyboard.press('Escape');
+await admin.goto(BASE + '/hvac-notes/#/publish'); await admin.reload(); await admin.waitForSelector('#move');
+await admin.click('#move'); await admin.waitForFunction(() => !document.querySelector('#move') && /Version/.test(document.querySelector('#lib').textContent), null, { timeout: 20000 });
+ok(sql("select coalesce(index_path, '-') || coalesce(growth_path, '-') from hvac_notes.library") === '--' && sql("select count(*) from hvac_notes.pages where idx is not null") === '4'
+  && sql("select status from hvac_notes.pages where slug = 'test-basics'") === 'approved', 'Move now puts the index and timeline into the database; statuses stay');
+ok((await rpc(phone, 'hvac_notes_index')).pages.length === 4, 'after the move a reader gets the stored index');
+sql(`update hvac_notes.library set growth = ${"'" + keepGrowth.replace(/'/g, "''") + "'"}::jsonb`);
+ok(admin.problems.length === 0, 'move: no console errors or CSP reports' + (admin.problems.length ? ': ' + admin.problems.join(' | ') : ''));
+
+// 7. no tile
 const none = await session('demo_none');
 await none.goto(BASE + '/hvac-notes/');
 await none.waitForSelector('.state h2');

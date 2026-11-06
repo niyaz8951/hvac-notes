@@ -65,12 +65,29 @@ declare v jsonb; n int; v_ver int;
     'select public.hvac_notes_state_save(''review'', ''{}''::jsonb)',
     'select public.hvac_notes_my_import(''{}''::jsonb)',
     'select public.hvac_notes_publish_export()',
-    'select public.hvac_notes_publish_commit(0, ''{}''::jsonb, ''[]''::jsonb, ''{}'', ''[]''::jsonb, ''{}'', null, ''_library/index-a.json'', ''_library/growth-a.json'')',
+    'select public.hvac_notes_publish_commit(0, ''{}''::jsonb, ''[]''::jsonb, ''{}'', ''[]''::jsonb, ''{}'', null, ''{"v": 1, "pages": []}''::jsonb, ''{"v": 1, "days": []}''::jsonb)',
     'select public.hvac_notes_shared()',
     'select public.hvac_notes_card_remove(1)',
     'select public.hvac_notes_reply_save(''highlight'', ''abc123'', ''x'')',
-    'select public.hvac_notes_reply_delete(1)'];
+    'select public.hvac_notes_reply_delete(1)',
+    'select public.hvac_notes_index()',
+    'select public.hvac_notes_growth()',
+    'select public.hvac_notes_page_status(array[''theory/example''], ''approved'')',
+    'select public.hvac_notes_notebook_set(''theory'', ''selected'')'];
   publish constant text[] := array[calls[11], calls[12], calls[14]];
+  admin_only constant text[] := array[calls[19], calls[20]];
+  -- an index and a timeline for the publishes below (invented)
+  i0 constant text := '{"v": 1, "pages": []}';
+  g0 constant text := '{"v": 1, "days": []}';
+  idx1 jsonb := jsonb_build_object('v', 1, 'pages', jsonb_build_array(
+    jsonb_build_object('tab', 'theory', 'slug', 'example', 'title', 'Example page', 'links', jsonb_build_array('theory/draft', 'theory/terms')),
+    jsonb_build_object('tab', 'theory', 'slug', 'terms', 'title', 'Terms', 'links', '[]'::jsonb),
+    jsonb_build_object('tab', 'theory', 'slug', 'draft', 'title', 'Draft page', 'links', jsonb_build_array('theory/example'))));
+  growth1 jsonb := jsonb_build_object('v', 1, 'days', jsonb_build_array(
+    jsonb_build_object('date', '2026-11-01', 'items', jsonb_build_array(jsonb_build_object('route', 'theory/example', 'kind', 'new'),
+                                                                        jsonb_build_object('route', 'theory/draft', 'kind', 'new'))),
+    jsonb_build_object('date', '2026-11-02', 'items', jsonb_build_array(jsonb_build_object('route', 'theory/draft', 'kind', 'grew'))),
+    jsonb_build_object('date', '2026-11-03', 'items', jsonb_build_array(jsonb_build_object('route', 'theory/old-example', 'kind', 'grew')))));
   c text;
 begin
   -- signed out: anon may execute nothing
@@ -99,48 +116,102 @@ begin
   -- reader (tile, no right): publishing and writing to the bucket are refused
   perform pg_temp.act_as('demo_user');
   foreach c in array publish loop perform pg_temp.expect_error(c, 'NO_RIGHT'); end loop;
+  foreach c in array admin_only loop perform pg_temp.expect_error(c, 'NO_RIGHT'); end loop;
   perform pg_temp.expect_error($q$insert into storage.objects (bucket_id, name) values ('hvac-notes', 'theory/images/x.svg')$q$, 'RLS');
   reset role;
 
   -- editor publishes: invalid input is refused, then a valid publish
   perform pg_temp.act_as('demo_admin');
-  perform pg_temp.expect_error($q$select public.hvac_notes_publish_commit(5, '{}'::jsonb, '[]'::jsonb, '{}', '[]'::jsonb, '{}', null, '_library/index-a.json', '_library/growth-a.json')$q$, 'INVALID:version');
-  perform pg_temp.expect_error($q$select public.hvac_notes_publish_commit(0, '{}'::jsonb, '[]'::jsonb, '{}', '[]'::jsonb, '{}', null, 'index.json', '_library/growth-a.json')$q$, 'INVALID:index_path');
-  perform pg_temp.expect_error($q$select public.hvac_notes_publish_commit(0, '{"theory": "not json"}'::jsonb, '[]'::jsonb, '{}', '[]'::jsonb, '{}', null, '_library/index-a.json', '_library/growth-a.json')$q$, 'INVALID:navs');
-  perform pg_temp.expect_error($q$select public.hvac_notes_publish_commit(0, '{"theory": "{}"}'::jsonb, '[]'::jsonb, '{}', '[]'::jsonb, '{}', null, '_library/index-a.json', '_library/growth-a.json')$q$, 'INVALID:navs');
-  perform pg_temp.expect_error($q$select public.hvac_notes_publish_commit(0, '{}'::jsonb, '[{"tab": "Theory", "slug": "x", "md": "# X"}]'::jsonb, '{}', '[]'::jsonb, '{}', null, '_library/index-a.json', '_library/growth-a.json')$q$, 'INVALID:pages');
-  perform pg_temp.expect_error($q$select public.hvac_notes_publish_commit(0, '{}'::jsonb, '[]'::jsonb, '{}', '[{"path": "../x.svg", "size": 1, "sha": "00"}]'::jsonb, '{}', null, '_library/index-a.json', '_library/growth-a.json')$q$, 'INVALID:files');
-  -- bucket: only images and library files, nothing else
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(5, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{}', '[]', '{}', '[]', '{}', i0, g0), 'INVALID:version');
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(0, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{}', '[]', '{}', '[]', '{}', '{"pages": {}}', g0), 'INVALID:index');
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(0, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{}', '[]', '{}', '[]', '{}', i0, '{"days": 1}'), 'INVALID:growth');
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(0, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{}', '[]', '{}', '[]', '{}', '{"v": 1, "pages": [{"tab": "../x", "slug": "y"}]}', g0), 'INVALID:index');
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(0, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{"theory": "not json"}', '[]', '{}', '[]', '{}', i0, g0), 'INVALID:navs');
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(0, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{"theory": "{}"}', '[]', '{}', '[]', '{}', i0, g0), 'INVALID:navs');
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(0, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{}', '[{"tab": "Theory", "slug": "x", "md": "# X"}]', '{}', '[]', '{}', i0, g0), 'INVALID:pages');
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(0, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{}', '[]', '{}', '[{"path": "../x.svg", "size": 1, "sha": "00"}]', '{}', i0, g0), 'INVALID:files');
+  -- bucket: only images (the index and timeline are no longer files)
   insert into storage.objects (bucket_id, name) values ('hvac-notes', 'theory/images/example.svg');
-  insert into storage.objects (bucket_id, name) values ('hvac-notes', '_library/index-v1.json');
+  perform pg_temp.expect_error($q$insert into storage.objects (bucket_id, name) values ('hvac-notes', '_library/index-v1.json')$q$, 'RLS');
   perform pg_temp.expect_error($q$insert into storage.objects (bucket_id, name) values ('hvac-notes', 'theory/example.md')$q$, 'RLS');
   perform pg_temp.expect_error($q$insert into storage.objects (bucket_id, name) values ('hvac-notes', '_library/other.json')$q$, 'RLS');
+  -- theory: example (related: the draft), terms, draft; refrigeration links the draft and example; chillers/gone
   select public.hvac_notes_publish_commit(0,
-    jsonb_build_object('theory', '[{"slug": "example", "title": "Example page"}]', 'chillers', '[{"slug": "gone", "title": "Gone"}]'),
+    jsonb_build_object('theory', '[{"slug": "example", "title": "Example page", "related": ["theory/draft", "theory/terms"], "aliases": ["old-example"]}, {"slug": "terms", "title": "Terms", "layout": "cards"}, {"slug": "draft", "title": "Draft page", "prereq": ["theory/example"]}]',
+                       'refrigeration', '[{"link": "theory/draft"}, {"link": "theory/example", "group": "Linked"}]',
+                       'chillers', '[{"slug": "gone", "title": "Gone"}]'),
     '[{"tab": "theory", "slug": "example", "md": "# Example page\n\nInvented text for testing.\n\n## Sources\n\n1. Invented."},
+      {"tab": "theory", "slug": "terms", "md": "# Terms\n\n### COP\n\nInvented."},
+      {"tab": "theory", "slug": "draft", "md": "# Draft page\n\nInvented draft text."},
       {"tab": "chillers", "slug": "gone", "md": "# Gone"}]'::jsonb,
     '{}', jsonb_build_array(jsonb_build_object('path', 'theory/images/example.svg', 'size', 10, 'sha', repeat('a', 64))), '{}',
-    E'# Credits\n', '_library/index-v1.json', '_library/growth-v1.json') into v;
-  if (v ->> 'version')::int <> 1 then raise exception 'publish version %', v; end if;
+    E'# Credits\n', idx1, growth1) into v;
+  if (v ->> 'version')::int <> 1 or (v ->> 'drafts')::int <> 4 then raise exception 'publish version %', v; end if;
   -- a second publish from the same base is stale
-  perform pg_temp.expect_error($q$select public.hvac_notes_publish_commit(0, '{}'::jsonb, '[]'::jsonb, '{}', '[]'::jsonb, '{}', null, '_library/index-a.json', '_library/growth-a.json')$q$, 'INVALID:version');
+  perform pg_temp.expect_error(format('select public.hvac_notes_publish_commit(0, %L::jsonb, %L::jsonb, %L, %L::jsonb, %L, null, %L::jsonb, %L::jsonb)', '{}', '[]', '{}', '[]', '{}', i0, g0), 'INVALID:version');
   -- remove a notebook and its page
-  select public.hvac_notes_publish_commit(1, '{"chillers": null}'::jsonb, '[]'::jsonb, array['chillers/gone'], '[]'::jsonb, '{}', null,
-    '_library/index-v2.json', '_library/growth-v2.json') into v;
+  select public.hvac_notes_publish_commit(1, '{"chillers": null}'::jsonb, '[]'::jsonb, array['chillers/gone'], '[]'::jsonb, '{}', null, idx1, growth1) into v;
   select public.hvac_notes_publish_export() into v;
-  if (v ->> 'version')::int <> 2 or jsonb_array_length(v -> 'pages') <> 1 or (v -> 'navs') ? 'chillers' or v ->> 'credits' <> E'# Credits\n'
-     or jsonb_array_length(v -> 'files') <> 1 then raise exception 'export %', v; end if;
+  if (v ->> 'version')::int <> 2 or jsonb_array_length(v -> 'pages') <> 3 or (v -> 'navs') ? 'chillers' or v ->> 'credits' <> E'# Credits\n'
+     or jsonb_array_length(v -> 'files') <> 1 or jsonb_array_length(v -> 'index' -> 'pages') <> 3 or v -> 'index' -> 'pages' -> 0 ->> 'slug' <> 'example'
+     or v -> 'growth' <> growth1 or v -> 'status' <> '{"theory/draft": "draft", "theory/terms": "draft", "theory/example": "draft"}'::jsonb
+     or (v ->> 'approver')::boolean then raise exception 'export %', v; end if;
+  -- the editor sees drafts, but only a tile admin approves or opens notebooks
+  select public.hvac_notes_library() into v;
+  if not (v ->> 'editor')::boolean or (v ->> 'approver')::boolean or jsonb_array_length(v -> 'drafts') <> 3 then raise exception 'editor library %', v; end if;
+  select public.hvac_notes_page('theory', 'draft') into v; if v ->> 'status' <> 'draft' then raise exception 'editor draft page %', v; end if;
+  foreach c in array admin_only loop perform pg_temp.expect_error(c, 'NO_RIGHT'); end loop;
+  reset role;
+
+  -- new pages are drafts: a reader gets none of them
+  perform pg_temp.act_as('demo_user');
+  select public.hvac_notes_library() into v;
+  if (v ->> 'editor')::boolean or v -> 'navs' ->> 'theory' <> '[]' or v -> 'navs' ->> 'refrigeration' <> '[]' or v -> 'drafts' <> '[]'::jsonb then raise exception 'reader library with drafts %', v; end if;
+  perform pg_temp.expect_error($q$select public.hvac_notes_page('theory', 'example')$q$, 'NOT_FOUND');
+  select count(*) into n from public.hvac_notes_pages(null); if n <> 0 then raise exception 'reader pages with drafts %', n; end if;
+  if jsonb_array_length((public.hvac_notes_index()) -> 'pages') <> 0 or jsonb_array_length((public.hvac_notes_growth()) -> 'days') <> 0 then raise exception 'reader index/growth with drafts'; end if;
+  perform pg_temp.expect_error($q$select public.hvac_notes_highlight_save('abc999', 'theory', 'example', '', 'yellow', '', '{"exact": "x"}'::jsonb)$q$, 'NOT_FOUND');
+  perform pg_temp.expect_error($q$select public.hvac_notes_card_save('theory/terms/cop', 'COP', 'mint', 'n')$q$, 'NOT_FOUND');
+  reset role;
+
+  -- the tile admin approves example and terms (draft stays a draft)
+  update core.tile_access set is_admin = true where tile_id = 'hvac-notes' and user_id = (select id from t_ids where k = 'demo_admin');
+  perform pg_temp.act_as('demo_admin');
+  if not ((public.hvac_notes_library()) ->> 'approver')::boolean then raise exception 'tile admin is not approver'; end if;
+  perform pg_temp.expect_error($q$select public.hvac_notes_page_status(array['theory/example', 'theory/nothing'], 'approved')$q$, 'NOT_FOUND');
+  perform pg_temp.expect_error($q$select public.hvac_notes_page_status(array['theory/example'], 'live')$q$, 'INVALID:status');
+  perform pg_temp.expect_error($q$select public.hvac_notes_page_status('{}', 'approved')$q$, 'INVALID:routes');
+  select public.hvac_notes_page_status(array['theory/example', 'theory/terms'], 'approved') into v;
+  if (v ->> 'changed')::int <> 2 then raise exception 'approve %', v; end if;
+  select public.hvac_notes_page_status(array['theory/example'], 'approved') into v;
+  if (v ->> 'changed')::int <> 0 then raise exception 'approve again %', v; end if;
+  reset role;
+  select count(*) into n from core.audit where tile_id = 'hvac-notes' and action = 'page_approved'; if n <> 1 then raise exception 'approve audit %', n; end if;
+
+  -- the reader now reads them; the draft and every trace of it stay out
+  perform pg_temp.act_as('demo_user');
+  select public.hvac_notes_library() into v;
+  if v -> 'navs' ->> 'theory' is null
+     or (v -> 'navs' ->> 'theory')::jsonb <> '[{"slug": "example", "title": "Example page", "related": ["theory/terms"], "aliases": ["old-example"]}, {"slug": "terms", "title": "Terms", "layout": "cards"}]'::jsonb
+     or (v -> 'navs' ->> 'refrigeration')::jsonb <> '[{"link": "theory/example", "group": "Linked"}]'::jsonb then raise exception 'reader navs %', v -> 'navs'; end if;
+  select public.hvac_notes_index() into v;
+  if jsonb_array_length(v -> 'pages') <> 2 or v -> 'pages' -> 0 ->> 'slug' <> 'example' or v -> 'pages' -> 0 -> 'links' <> '["theory/terms"]'::jsonb then raise exception 'reader index %', v; end if;
+  select public.hvac_notes_growth() into v;
+  if v <> '{"v": 1, "days": [{"date": "2026-11-01", "items": [{"route": "theory/example", "kind": "new"}]}, {"date": "2026-11-03", "items": [{"route": "theory/old-example", "kind": "grew"}]}]}'::jsonb then
+    raise exception 'reader growth %', v; end if;
+  perform pg_temp.expect_error($q$select public.hvac_notes_page('theory', 'draft')$q$, 'NOT_FOUND');
+  select count(*) into n from public.hvac_notes_pages(array['theory/example', 'theory/draft']); if n <> 1 then raise exception 'reader pages %', n; end if;
   reset role;
 
   -- reader reads
   perform pg_temp.act_as('demo_user');
   select public.hvac_notes_library() into v;
-  if v ->> 'index_path' <> '_library/index-v2.json' or not (v -> 'navs') ? 'theory' then raise exception 'library %', v; end if;
+  if (v ? 'index_path') or not (v -> 'navs') ? 'theory' or (v ->> 'version')::int <> 2 then raise exception 'library %', v; end if;
   select public.hvac_notes_page('theory', 'example') into v;
   if v ->> 'md' not like '# Example page%' then raise exception 'page %', v; end if;
   perform pg_temp.expect_error($q$select public.hvac_notes_page('theory', 'nothing')$q$, 'NOT_FOUND');
   select count(*) into n from public.hvac_notes_pages(array['theory/example', 'theory/nothing']); if n <> 1 then raise exception 'pages %', n; end if;
-  select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 2 then raise exception 'reader sees bucket: %', n; end if;
+  select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 1 then raise exception 'reader sees bucket: %', n; end if;
   perform pg_temp.expect_error($q$select count(*) from public.hvac_notes_pages((select array_agg('theory/x' || g) from generate_series(1, 301) g))$q$, 'INVALID:routes');
 
   -- reader's own data
@@ -257,7 +328,7 @@ begin
   perform pg_temp.act_as('demo_user');
   delete from storage.objects where bucket_id = 'hvac-notes';
   reset role;
-  select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 2 then raise exception 'reader deleted from bucket: %', n; end if;
+  select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 1 then raise exception 'reader deleted from bucket: %', n; end if;
   perform pg_temp.act_as('demo_admin');
   delete from storage.objects where bucket_id = 'hvac-notes';
   reset role;
@@ -302,6 +373,68 @@ begin
     union all select x ->> 'by' from jsonb_array_elements(v -> 'replies') x where x ->> 'ref' = 'adm001' and x ->> 'body' = 'B reply') y
   where y.b = 'Demo None';
   if n <> 3 then raise exception 'names after delete (saved name): % of 3 %', n, v; end if;
+  reset role;
+
+  -- notebook level (005): theory for selected users only. Then the reader holds nb_theory. Then back to everyone.
+  perform pg_temp.act_as('demo_admin');
+  insert into storage.objects (bucket_id, name) values ('hvac-notes', 'theory/images/example.svg');
+  perform pg_temp.expect_error($q$select public.hvac_notes_notebook_set('Theory', 'selected')$q$, 'INVALID:tab');
+  perform pg_temp.expect_error($q$select public.hvac_notes_notebook_set('a-very-long-notebook-name', 'selected')$q$, 'INVALID:tab');
+  perform pg_temp.expect_error($q$select public.hvac_notes_notebook_set('theory', 'some')$q$, 'INVALID:audience');
+  select public.hvac_notes_notebook_set('theory', 'selected') into v;
+  if v ->> 'right' <> 'nb_theory' then raise exception 'notebook set %', v; end if;
+  select public.hvac_notes_library() into v;
+  if v -> 'audience' <> '{"theory": "selected"}'::jsonb or not (v -> 'navs') ? 'theory' then raise exception 'admin library closed notebook %', v; end if;
+  select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 1 then raise exception 'admin image %', n; end if;
+  reset role;
+  perform pg_temp.act_as('demo_user');
+  select public.hvac_notes_library() into v;
+  if (v -> 'navs') ? 'theory' or v -> 'closed' <> '["theory"]'::jsonb or (v -> 'navs' ->> 'refrigeration')::jsonb <> '[]'::jsonb then raise exception 'reader library closed notebook %', v; end if;
+  perform pg_temp.expect_error($q$select public.hvac_notes_page('theory', 'example')$q$, 'NOT_FOUND');
+  select public.hvac_notes_shared() into v;
+  if jsonb_array_length(v -> 'highlights') <> 0 or jsonb_array_length(v -> 'cards') <> 0 or jsonb_array_length(v -> 'replies') <> 0 then raise exception 'reader shared closed notebook %', v; end if;
+  if jsonb_array_length((public.hvac_notes_index()) -> 'pages') <> 0 then raise exception 'reader index closed notebook'; end if;
+  select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 0 then raise exception 'reader image in closed notebook %', n; end if;
+  perform pg_temp.expect_error($q$select public.hvac_notes_reply_save('highlight', 'adm001', 'x')$q$, 'NOT_FOUND');
+  reset role;
+  update core.tile_access set rights = array['nb_theory'] where tile_id = 'hvac-notes' and user_id = (select id from t_ids where k = 'demo_user');
+  perform pg_temp.act_as('demo_user');
+  select public.hvac_notes_library() into v;
+  if not (v -> 'navs') ? 'theory' or v -> 'closed' <> '[]'::jsonb then raise exception 'reader with nb_theory %', v; end if;
+  select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 1 then raise exception 'reader with nb_theory image %', n; end if;
+  if jsonb_array_length((public.hvac_notes_shared()) -> 'highlights') <> 2 then raise exception 'reader with nb_theory shared'; end if;
+  reset role;
+  update core.tile_access set rights = '{}' where tile_id = 'hvac-notes' and user_id = (select id from t_ids where k = 'demo_user');
+  perform pg_temp.act_as('demo_admin');
+  perform public.hvac_notes_notebook_set('theory', 'all');
+  -- hide a page again: it goes back to draft
+  select public.hvac_notes_page_status(array['theory/example'], 'draft') into v;
+  if (v ->> 'changed')::int <> 1 then raise exception 'hide %', v; end if;
+  reset role;
+  perform pg_temp.act_as('demo_user');
+  perform pg_temp.expect_error($q$select public.hvac_notes_page('theory', 'example')$q$, 'NOT_FOUND');
+  select public.hvac_notes_shared() into v;
+  if jsonb_array_length(v -> 'highlights') <> 0 then raise exception 'reader shared on hidden page %', v; end if;
+  select count(*) into n from storage.objects where bucket_id = 'hvac-notes'; if n <> 1 then raise exception 'reader image, notebook open %', n; end if;
+  if jsonb_array_length((public.hvac_notes_growth()) -> 'days') <> 0 then raise exception 'reader growth hidden page'; end if;
+  reset role;
+  select count(*) into n from core.audit where tile_id = 'hvac-notes' and action in ('page_hidden', 'notebook_audience'); if n <> 3 then raise exception 'visibility audit %', n; end if;
+
+  -- old layout (before the move): index in a bucket file, readers get no stored index; the next commit moves it
+  update hvac_notes.library set index_path = '_library/index-old.json', growth_path = '_library/growth-old.json', growth = null;
+  perform pg_temp.act_as('demo_user');
+  if public.hvac_notes_index() is not null or public.hvac_notes_growth() is not null then raise exception 'index before move'; end if;
+  if public.hvac_notes_file_open('_library/index-old.json') or not public.hvac_notes_file_open('theory/images/example.svg') then raise exception 'reader file_open'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_pending');
+  if public.hvac_notes_file_open('theory/images/example.svg') then raise exception 'pending file_open'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_admin');
+  select public.hvac_notes_publish_export() into v;
+  if v -> 'index' <> 'null'::jsonb or v -> 'growth' <> 'null'::jsonb or v ->> 'index_path' <> '_library/index-old.json' then raise exception 'export before move %', v; end if;
+  select public.hvac_notes_publish_commit((v ->> 'version')::int, '{}'::jsonb, '[]'::jsonb, '{}', '[]'::jsonb, '{}', null, idx1, growth1) into v;
+  select public.hvac_notes_publish_export() into v;
+  if v -> 'index_path' <> 'null'::jsonb or jsonb_array_length(v -> 'index' -> 'pages') <> 3 or v -> 'growth' <> growth1 then raise exception 'export after move %', v; end if;
   reset role;
 
   -- the tables are not reachable directly

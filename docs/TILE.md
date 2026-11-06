@@ -8,38 +8,50 @@ A reading app for HVAC product and engineering notes: six notebooks (Theory, Ref
 This repo is public and holds code only. The pages, images, search index and timeline live only in Supabase.
 
 ## Rights
-- Reading = having the tile.
-- `edit` - the Publish page: publish pages, download all pages; remove anyone's highlight, card note or reply (owner only).
+- Reading = having the tile: every approved page of every notebook open to all users.
+- `edit` - the Publish page: publish pages, download all pages; remove anyone's highlight, card note or reply (owner only). Also sees drafts and every notebook.
+- `nb_theory`, `nb_refrigeration`, `nb_chillers`, `nb_ahu`, `nb_fcu`, `nb_systems`, `nb_ashrae` - read that notebook when it is set to *Selected users*. One per notebook (`nb_` + notebook id, hyphens as underscores; a new notebook adds its right here and on the admin page).
+- Tile admin (and the super user): approve and hide pages, set a notebook to *All users* or *Selected users*. Sees everything.
+
+## Who sees what (005, owner 2026-11-06)
+- **Notebook:** *All users* (default) or *Selected users* (those holding `nb_<notebook>`). Selected with nobody given the right = hidden. A closed notebook is off the shelf, the tab bar and the sidebar; its pages, images, notes and search entries are not sent.
+- **Page:** *Draft* or *Approved*. A newly published page is a draft; the tile admin opens it and presses **Approve**. **Hide** puts it back to draft. A change to an approved page goes live at once. Pages published before 005 are approved.
+- **Links:** the page's home decides. A linked chapter, prereq, related page, Up next, search entry, term, standard, symptom, check question, In the field item, timeline item, highlight, card note or reply of a page the reader cannot open is not sent to him. A link in the text to such a page shows as plain text ("Not available yet"). Known limit: an image of a draft page in an open notebook can be fetched by its exact file name (which the reader never receives).
+- The database does all of this (`hvac_notes.visible_routes`, `nav_for`, `idx_for`); the page only hides what it was not sent.
 
 ## Data
-- `hvac_notes.library` - one row: `version`, `index_path`, `growth_path` (files in the bucket), `credits` (CREDITS.md text), `published_at`, `published_by`.
+- `hvac_notes.library` - one row: `version`, `growth` (the timeline), `credits` (CREDITS.md text), `published_at`, `published_by`; `index_path`, `growth_path` are the old bucket files, null once moved (Publish page > *Move now*).
+- `hvac_notes.notebooks` - notebooks for selected users: `tab`, `audience` (`selected`); no row = all users.
 - `hvac_notes.sections` - per notebook: `tab`, `nav` (the `nav.json` text: slug, title, summary, updated, group, prereq, related, keywords, aliases, start, kind, layout).
-- `hvac_notes.pages` - `tab`, `slug`, `md` (Markdown, at most 400 000 characters).
+- `hvac_notes.pages` - `tab`, `slug`, `md` (Markdown, at most 400 000 characters), `status` (`draft` / `approved`), `approved_at`, `approved_by`, `idx` (its search-index entry), `ord` (place in the index).
 - `hvac_notes.files` - images: `path` (`<tab>/images/<file>`), `size`, `sha256`.
 - Shared, with `author` (the author's display name): `highlights` (quote, colour, note) and the note in `cards`. Everyone with the tile reads them; only the author changes them; `edit` may remove them.
 - `replies` - answers under a highlight (`kind` `highlight`, `ref` = highlight id) or a card note (`kind` `card`, `ref` = card row id), with `author`. Anyone with the tile reads and adds; the author deletes his own, `edit` any. Removing a note removes its replies.
 - Private to each user: the colour in `cards`, `positions` (reading position per page), `state` (`review`, `practice`, `seen`).
 - All tables: RLS on, no policies; reached only through the functions below.
-- Bucket `hvac-notes` (private, 5 MB per file, images and JSON): `<tab>/images/<file>`, `_library/index-<tag>.json`, `_library/growth-<tag>.json`. Read: anyone with the tile. Write and delete: right `edit`, those paths only.
+- Bucket `hvac-notes` (private, 5 MB per file): `<tab>/images/<file>`. Read: anyone who can open that notebook (`public.hvac_notes_file_open`, used by the read policy). Write: right `edit`, images only. Delete: right `edit`. Old `_library/*.json` files (before the move): read by `edit` only.
 
 ## Functions
 All `security definer`, `search_path ''`, granted to `authenticated` only; every one starts with `core.require_tile('hvac-notes', …)`.
-- `hvac_notes_library()` - version, file paths, credits, every notebook's `nav`.
-- `hvac_notes_page(p_tab, p_slug)`, `hvac_notes_pages(p_routes)` (at most 300) - Markdown of pages.
+- `hvac_notes_library()` - version and every notebook's `nav` the caller may read (cut for readers); `editor`, `approver`, `drafts`, `audience` for editors, `closed` for readers.
+- `hvac_notes_page(p_tab, p_slug)`, `hvac_notes_pages(p_routes)` (at most 300) - Markdown of pages the caller may read (`NOT_FOUND` otherwise).
+- `hvac_notes_index()` - the search index of the pages the caller may read (null before the move: the reader then builds it). `hvac_notes_growth()` - the timeline, items of other pages left out.
+- `hvac_notes_page_status(p_routes, p_status)` - tile admin: `approved` or `draft` (audited `page_approved` / `page_hidden`). `hvac_notes_notebook_set(p_tab, p_audience)` - tile admin: `all` or `selected` (audited `notebook_audience`); returns the right's name.
+- `hvac_notes_file_open(p_name)` - for the bucket's read policy only (returns true or false for the signed-in user; no `require_tile`, like `core.has_tile`).
 - `hvac_notes_my_data()` - the caller's highlights, cards, positions and state; also updates the author name on his notes.
-- `hvac_notes_shared()` - everyone else's highlights and card notes, with `by` (author name); no card colours; plus every reply (`mine` marks the caller's). At most 5000 of each, newest first.
+- `hvac_notes_shared()` - everyone else's highlights and card notes on pages the caller may read, with `by` (author name); no card colours; plus their replies (`mine` marks the caller's). At most 5000 of each, newest first. Saving a highlight, card note or reply on a page the caller cannot read: `NOT_FOUND`.
 - `hvac_notes_reply_save(p_kind, p_ref, p_body)` - a reply; returns its id. `hvac_notes_reply_delete(p_id)` - own, or any with `edit` (audited `reply_removed`).
 - `hvac_notes_highlight_save`, `hvac_notes_card_save`, `hvac_notes_position_save`, `hvac_notes_state_save` - the caller's own records (another user's highlight id: `INVALID:id`).
 - `hvac_notes_highlight_delete(p_id)` - the caller's own; anyone's with `edit` (audited `note_removed`); otherwise `NOT_FOUND`.
 - `hvac_notes_card_remove(p_id)` - right `edit`: remove another user's card note (audited `note_removed`).
 - `hvac_notes_my_import(p_data)` - restore the caller's own backup file.
-- `hvac_notes_publish_export()` - right `edit`: everything published, for the export zip and the Publish page.
-- `hvac_notes_publish_commit(p_base, …)` - right `edit`: one atomic publish; refused (`INVALID: version`) if someone published since `p_base`. Audited as `publish`.
+- `hvac_notes_publish_export()` - right `edit`: everything published (with the index, timeline, drafts and notebook settings), for the export zip and the Publish page.
+- `hvac_notes_publish_commit(p_base, p_navs, p_pages, p_remove, p_files, p_remove_files, p_credits, p_index, p_growth)` - right `edit`: one atomic publish, carrying the whole index and timeline; new pages are drafts; refused (`INVALID: version`) if someone published since `p_base`. Audited as `publish`.
 
 ## Writing and publishing pages
 - Format unchanged from the old site: `src/<notebook>/<slug>.md`, `src/<notebook>/nav.json`, `src/<notebook>/images/…`, `src/CREDITS.md`. Template: `tools/page-template.md`. Writing rules: the project's writing rules, unchanged.
 - Check before upload: `node tools/lint.mjs <folder>` (same rules as the Publish page: `assets/js/lint.js`, `assets/js/indexer.js`).
-- Publish page: pick a zip or the folder. By default the upload is merged over what is published (only pages in the upload change); *This is the whole library* also removes pages that are not in it. A page also goes when its notebook's new `nav.json` no longer lists it. The page shows the changes, the timeline entry and the check results before anything is sent.
+- Publish page: pick a zip or the folder. New pages arrive as drafts (the page says so, and lists the drafts waiting). By default the upload is merged over what is published (only pages in the upload change); *This is the whole library* also removes pages that are not in it. A page also goes when its notebook's new `nav.json` no longer lists it. The page shows the changes, the timeline entry and the check results before anything is sent.
 - Download all pages: a zip of `src/` exactly as published (Markdown, `nav.json`, images, `CREDITS.md`, `growth.json`). It is the authoring copy and the backup.
 
 ## Decisions
@@ -51,6 +63,7 @@ All `security definer`, `search_path ''`, granted to `authenticated` only; every
 - YouTube: a card; a tap loads YouTube's privacy-mode player in place, on the conditions of the admin repo's `docs/SECURITY.md` section 4 (exception for this tile, 2026-11-04): `index.html` alone carries `frame-src https://www.youtube-nocookie.com`; nothing loads from YouTube before the tap; the address is built in code from the checked 11-character id and a whole-number start; the frame is sandboxed with `referrerpolicy` set; "Watch on YouTube" is always shown beside it. `publish.html` keeps the standard line.
 - First publish: if the upload holds the old site's `index.json` and `growth.json`, the old timeline is carried over and only pages that differ from the old index count as changes.
 - 2026-11-05 (owner) - New notebook **Refrigeration** (`refrigeration`, Books shelf after Theory, cover #B8325A, p–h cycle cover art). Theory stays the home of shared articles; Refrigeration lists them as linked chapters (below). Notebook ids live in `assets/js/app.js` (TABS, BOOKS, PATH_ORDER) and `assets/js/lint.js` (TABS); the database accepts any id.
+- 2026-11-06 (owner) - **Who can read.** Notebook level: all users, or selected users (right `nb_<notebook>`). Page level: new pages are drafts until the tile admin approves them; Hide sends a page back to draft; changes to an approved page go live without a second approval. A page's home decides for every link to it. No content moved. The index and timeline moved from the bucket into the database so every read can be filtered (`005_visibility.sql`).
 - 2026-11-05 (owner) - **Linked chapters: one article, two doors.** An article has one home (usually Theory) and another notebook may list it: a `nav.json` entry `{ "link": "theory/<slug>", "group": "…" }` (no slug, title or file). The notebook's chapter list, its sidebar list and its cover count show it with an "In <home notebook>" tag and open the page at its home route; highlights, notes, positions, search, Up next and the timeline all stay on the home page. `HNData.toc(tab)` resolves the list; `HNData.nav(tab)` stays own pages only. The Publish check refuses a link to a page that does not exist, to the same notebook, or listed twice.
 - No service worker, no manifest, no install prompt: installing is the whole DAME app's job (owner, 2026-11-04).
 - 2026-11-04 (owner) - Troubleshooting and In the Field belong to each notebook (`#/symptoms/<tab>`, `#/field/<tab>`, rows on the notebook page), not to the library. Each card has one button, which opens focus mode on that card; colour, note and replies are edited there. On wide screens focus mode is a floating window over the dimmed page. Publish is a view inside the reader (`#/publish`, right `edit`, same shell and theme); `publish.html` remains as the stand-alone page. No install button or manifest in the tile.

@@ -5,9 +5,10 @@
  * quality check (lint.js, the same rules as tools/lint.mjs), builds the knowledge index (indexer.js, shared with the
  * reader), shows what will change and what the timeline will gain, and publishes through his own session:
  *   1. changed images to the private bucket (<notebook>/images/<file>)
- *   2. the new index and timeline to the bucket (_library/…)
- *   3. pages, nav.json and the image list in one database call (public.hvac_notes_publish_commit), all or nothing
- *   4. images and old index files that are no longer used are deleted from the bucket.
+ *   2. pages, nav.json, the image list, the index and the timeline in one database call
+ *      (public.hvac_notes_publish_commit), all or nothing; the database gives each reader only what he may read
+ *   3. images no longer used (and the old index and timeline files, from before 005) are deleted from the bucket.
+ * New pages arrive as drafts: the tile admin approves them on the page. A changed page keeps its status.
  * Download all pages gives the published library back as a zip (the authoring copy and a backup).
  * No key or password is involved anywhere: the database checks the right on every call.
  */
@@ -46,17 +47,45 @@
       version: ex.version, published_at: ex.published_at, credits: ex.credits || '',
       navs: ex.navs || {}, pages: new Map((ex.pages || []).map(p => [`${p.tab}/${p.slug}`, p.md])),
       files: new Map((ex.files || []).map(f => [f.path, f])), index_path: ex.index_path, growth_path: ex.growth_path,
-      index: null, growth: null
+      index: ex.index || null, growth: ex.growth || null, drafts: Object.keys(ex.status || {}).sort()
     };
-    if (cur.index_path) cur.index = await bucketJson(cur.index_path).catch(() => null);
-    if (cur.growth_path) cur.growth = await bucketJson(cur.growth_path).catch(() => null);
+    // Before 005 the index and timeline were files in the bucket: read them from there until they are moved.
+    if (!cur.index && cur.index_path) cur.index = await bucketJson(cur.index_path).catch(() => null);
+    if (!cur.growth && cur.growth_path) cur.growth = await bucketJson(cur.growth_path).catch(() => null);
+    const move = !!(cur.version && (cur.index_path || cur.growth_path));
     const tabs = sortTabs(Object.keys(cur.navs));
     render(box, html`<div class="row between"><h2>Published</h2>${cur.version ? html`<span class="badge brand">Version ${cur.version}</span>` : html`<span class="badge">Nothing yet</span>`}</div>
       ${cur.version ? html`<p class="muted">${Core.dateTime(cur.published_at)} · ${plural(tabs.length, 'notebook', 'notebooks')} · ${plural(cur.pages.size, 'page', 'pages')} · ${plural(cur.files.size, 'image', 'images')}${cur.growth ? ` · timeline of ${plural(cur.growth.days.length, 'day', 'days')}` : ''}</p>
         <div class="hp-tabs">${tabs.map(t => html`<span class="chip">${t} · ${(parseNav(cur.navs[t]) || []).length}</span>`)}</div>
+        ${cur.drafts.length ? html`<p class="notice warning">${plural(cur.drafts.length, 'draft', 'drafts')} waiting for approval (only editors see ${cur.drafts.length === 1 ? 'it' : 'them'}): ${cur.drafts.map((r, i) => html`${i ? ', ' : ''}<a href="./#/${r}" class="mono">${r}</a>`)}. Open a page and press Approve.</p>` : ''}
+        ${move ? html`<div class="notice brand hp-move"><p>The search index and the timeline are still files in the bucket. Move them into the database, where each reader gets only the pages he may read. Nothing else changes.</p><button class="btn primary" type="button" id="move">Move now</button></div>` : ''}
         <div class="row hp-gap"><button class="btn" type="button" id="export">Download all pages</button><span class="muted small-note">A zip of every notebook (nav.json, pages, images), CREDITS.md and the timeline: the copy to edit, and a backup.</span></div>`
       : html`<p class="muted">The library is empty. Upload the pages below to publish them for the first time.</p>`}`);
     const b = $('#export'); if (b) b.addEventListener('click', e => Core.busy(e.currentTarget, exportAll).catch(err => Core.showError(err)));
+    const mv = $('#move'); if (mv) mv.addEventListener('click', e => Core.busy(e.currentTarget, moveNow).catch(err => fail(err)));
+  }
+
+  // The index of a library: every page its notebooks list, in reading order (the same as the reader builds).
+  function buildIndex(navText, pages) {
+    const list = [];
+    for (const tab of sortTabs(Object.keys(navText))) for (const meta of (parseNav(navText[tab]) || []))
+      if (meta && meta.slug && pages.has(`${tab}/${meta.slug}`)) list.push({ tab, meta, md: pages.get(`${tab}/${meta.slug}`) });
+    return { list, index: IDX.build(list) };
+  }
+  // One commit with no page changes: the index and timeline go into the database, the old files are deleted.
+  async function moveNow() {
+    if (busy) return;
+    busy = true;
+    try {
+      const { index } = buildIndex(cur.navs, cur.pages);
+      const growth = cur.growth && Array.isArray(cur.growth.days) ? cur.growth : { v: 1, days: [] };
+      await Api.rpc('hvac_notes_publish_commit', { p_base: cur.version, p_navs: {}, p_pages: [], p_remove: [], p_files: [], p_remove_files: [],
+        p_credits: null, p_index: index, p_growth: growth });
+      for (const path of [cur.index_path, cur.growth_path].filter(Boolean)) await Api.file.remove(BUCKET, path).catch(() => { });
+      Core.toast('Index and timeline moved', 'success');
+      await load();
+      if (host !== document) host.dispatchEvent(new CustomEvent('hn-published', { bubbles: true }));
+    } finally { busy = false; }
   }
 
   /* ---------------- download all pages ---------------- */
@@ -147,9 +176,7 @@
     // The check and the index
     const navs = {}, navErrors = [];
     for (const [tab, text] of Object.entries(navText)) { const list = parseNav(text); if (!list) navErrors.push({ route: `${tab}/nav.json`, level: 'error', msg: 'nav.json is not a JSON list' }); navs[tab] = list || []; }
-    const list = [];
-    for (const tab of sortTabs(Object.keys(navs))) for (const meta of navs[tab]) if (meta && meta.slug && pages.has(`${tab}/${meta.slug}`)) list.push({ tab, meta, md: pages.get(`${tab}/${meta.slug}`) });
-    const index = IDX.build(list);
+    const { list, index } = buildIndex(navText, pages);
     const fileSet = new Set(), sizes = {};
     for (const [r, md] of pages) { fileSet.add(r + '.md'); sizes[r + '.md'] = enc.encode(md).length; }
     for (const [tab, text] of Object.entries(navText)) { fileSet.add(`${tab}/nav.json`); sizes[`${tab}/nav.json`] = enc.encode(text).length; }
@@ -205,6 +232,7 @@
       ${p.any ? html`<div class="table-wrap"><table><tbody>${rows.map(([label, list]) => html`<tr><th>${label} (${list.length})</th><td class="hp-list">${list.slice(0, 40).join(', ')}${list.length > 40 ? ` and ${list.length - 40} more` : ''}</td></tr>`)}
         ${p.creditsChanged ? html`<tr><th>CREDITS.md</th><td>changed</td></tr>` : ''}</tbody></table></div>` : html`<p class="notice">Nothing to publish: every page, list and image is the same as what is published.</p>`}
       ${p.items.length ? html`<h3 class="hp-h3">Timeline, ${today()}</h3><ul class="hp-ul">${p.items.map(it => html`<li><span class="mono">${it.route}</span> ${it.kind === 'new' ? 'new page' : [it.added.length ? plural(it.added.length, 'section added', 'sections added') : '', it.changed.length ? plural(it.changed.length, 'section changed', 'sections changed') : '', it.terms.length ? plural(it.terms.length, 'card added', 'cards added') : '', it.symptoms ? plural(it.symptoms, 'symptom', 'symptoms') : '', it.checks ? plural(it.checks, 'question', 'questions') : ''].filter(Boolean).join(', ')}</li>`)}</ul>` : ''}
+      ${p.added.length ? html`<p class="notice warning">New pages arrive as drafts: only editors see them until the tile admin opens each one and presses Approve. Changed pages keep their status.</p>` : ''}
       ${p.empty ? html`<p class="notice brand">First publish.${p.baseline ? ' The old site\'s index is the starting point, so only pages that differ from it count as changed.' : ''}${p.startLog ? ` The old timeline (${plural(p.startLog.days.length, 'day', 'days')}) is carried over.` : ''}</p>` : ''}
       <h3 class="hp-h3">Check</h3>
       ${s.blocking.length ? html`<div class="notice danger"><strong>${plural(s.blocking.length, 'error', 'errors')} on pages in this publish: fix them, then upload again.</strong><ul class="hp-ul">${s.blocking.map(issue)}</ul></div>` : html`<p class="notice success">No errors on the pages in this publish.</p>`}
@@ -220,7 +248,7 @@
       const what = [p.added.length && plural(p.added.length, 'new page', 'new pages'), p.changed.length && plural(p.changed.length, 'changed page', 'changed pages'),
         p.removed.length && plural(p.removed.length, 'removed page', 'removed pages'), (p.imgAdded.length + p.imgChanged.length) && plural(p.imgAdded.length + p.imgChanged.length, 'image', 'images'),
         p.imgRemoved.length && plural(p.imgRemoved.length, 'image removed', 'images removed')].filter(Boolean).join(', ') || 'the notebook lists';
-      Core.confirm(`Publish ${what}? Everyone with HVAC Notes sees it at once.`, { title: 'Publish', ok: 'Publish', danger: p.removed.length > 0 || p.imgRemoved.length > 0 })
+      Core.confirm(`Publish ${what}? ${p.changed.length || p.removed.length ? 'Changes to approved pages show at once. ' : ''}${p.added.length ? 'New pages stay drafts until approved.' : ''}`.trim(), { title: 'Publish', ok: 'Publish', danger: p.removed.length > 0 || p.imgRemoved.length > 0 })
         .then(yes => { if (yes) Core.busy(btn, () => publish(p)).catch(err => fail(err)); });
     });
   }
@@ -245,14 +273,8 @@
         progress(`Image ${i + 1} of ${up.length}`);
         await Api.file.upload(BUCKET, path, new Blob([p.newBytes.get(path)], { type: MIME[ext] }), MIME[ext]);
       }
-      // 2. index and timeline (new files; the old ones go after the commit)
-      progress('Index');
-      const v = p.base + 1, tag = `v${v}-${Math.random().toString(36).slice(2, 10)}`;
-      const indexPath = `_library/index-${tag}.json`, growthPath = `_library/growth-${tag}.json`;
+      // 2. pages, lists, image records, index and timeline: one call, all or nothing
       const log = IDX.addToLog(p.startLog ? JSON.parse(JSON.stringify(p.startLog)) : null, today(), p.items);
-      await Api.file.upload(BUCKET, indexPath, new Blob([JSON.stringify(p.index)], { type: 'application/json' }), 'application/json');
-      await Api.file.upload(BUCKET, growthPath, new Blob([JSON.stringify(log)], { type: 'application/json' }), 'application/json');
-      // 3. pages, lists, image records: one call, all or nothing
       progress('Pages');
       const navs = {};
       p.navChanged.forEach(t => { navs[t] = p.navText[t]; });
@@ -261,13 +283,13 @@
       const files = [...p.imgAdded, ...p.imgChanged].map(path => p.files.get(path));
       const r = await Api.rpc('hvac_notes_publish_commit', {
         p_base: p.base, p_navs: navs, p_pages: pages, p_remove: p.removed, p_files: files, p_remove_files: p.imgRemoved,
-        p_credits: p.creditsChanged ? p.credits : null, p_index_path: indexPath, p_growth_path: growthPath
+        p_credits: p.creditsChanged ? p.credits : null, p_index: p.index, p_growth: log
       });
-      // 4. tidy the bucket (a failure here leaves only unused files behind)
+      // 3. tidy the bucket (a failure here leaves only unused files behind)
       progress('Tidying');
       const gone = [...p.imgRemoved, cur.index_path, cur.growth_path].filter(Boolean);
       for (const path of gone) await Api.file.remove(BUCKET, path).catch(() => { });
-      Core.toast(`Published version ${r.version}`, 'success');
+      Core.toast(`Published version ${r.version}${r.drafts ? ` · ${plural(r.drafts, 'draft', 'drafts')} to approve` : ''}`, 'success');
       plan = null; $('#review').hidden = true; resetInputs();
       await load();
       if (host !== document) host.dispatchEvent(new CustomEvent('hn-published', { bubbles: true }));

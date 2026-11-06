@@ -9,7 +9,7 @@
     paintCard, openCard, enhance, fieldItem, markWide, loadImages, applySettings, updateThemeColor, backBtn, searchBtn, focusBtn,
     setNav, watchLargeTitle, renderTabbar, where, setActive, canPublish, renderSidebar, coverArt, getIndex, pageOf, aliasMap,
     migrateAliases, routeOf, relatedOf, reviewPool, dueOf, changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY,
-    hlsOf, progressOf, saveReview, savePractice, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, discussions } = A;
+    hlsOf, progressOf, saveReview, savePractice, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, discussions, shown, draftTag } = A;
   const m = () => A.mine();
   const setTitle = t => Core.setTitle(t ? `${t} · ${SITE}` : SITE);
   const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
@@ -76,6 +76,7 @@
       return html`<a class="book-item" href="#/${t.id}" data-tab="${t.id}">
         <div class="cover"><div class="cover-art">${coverArt(t.id)}</div><span class="cover-sub">${t.kicker}</span><span class="cover-name">${t.cover || t.name}</span></div>
         <div class="book-meta"><span>${pages.length ? `${pages.length} ${pages.length === 1 ? 'page' : 'pages'}` : 'Coming soon'}</span>
+        ${D.editor && D.audienceOf(t.id) === 'selected' ? html`<span class="aud-tag" title="Selected users only">Selected</span>` : ''}
         ${done ? html`<span class="book-progress">${Math.round(done / pages.length * 100)}%</span>` : ''}</div></a>`;
     };
 
@@ -84,9 +85,9 @@
       <button class="home-search" type="button" data-act="search">${icon('i-search')}<span>Search</span></button>
       ${cont.length ? html`<div class="section-head"><h2>Learning</h2><span class="head-note">${nx.read} of ${nx.total} chapters read</span></div>` : ''}${cont}
       <div class="section-head"><h2>Products</h2></div>
-      <div class="shelf">${PRODUCTS.map(t => coverOf(t, TABS.indexOf(t)))}</div>
+      ${shown(PRODUCTS).length ? html`<div class="shelf">${shown(PRODUCTS).map(t => coverOf(t, TABS.indexOf(t)))}</div>` : ''}
       <div class="section-head"><h2>Books</h2></div>
-      <div class="shelf">${BOOKS.map(t => coverOf(t, TABS.indexOf(t)))}</div>
+      <div class="shelf">${shown(BOOKS).map(t => coverOf(t, TABS.indexOf(t)))}</div>
       <div class="group gap-t">
         ${libRow('#/review', 'Review', 'i-review', 'it-review', dueN ? `${dueN} due` : '')}
         ${libRow('#/timeline', 'Timeline', 'i-timeline', 'it-timeline', weekN ? `+${weekN} this week` : '')}
@@ -123,17 +124,63 @@
       const ip = pageOf(idx, `${p.tab}/${p.slug}`), ch = ip ? changesOf(ip) : null;
       groups[groups.length - 1].rows.push(html`<a class="hn-row" href="#/${p.tab}/${p.slug}"><span class="row-num">${i + 1}</span>
         <span class="row-main"><span class="row-title">${p.title}</span>${p.summary ? html`<span class="row-sub">${p.summary}</span>` : ''}
-        <span class="row-meta">${ch && ch.length ? html`<span class="new-tag">${ch.length} new</span>` : ''}${p.linked ? html`<span class="from-tag" data-tab="${p.tab}">In ${TAB[p.tab] ? TAB[p.tab].name : p.tab}</span>` : ''}${!p.linked && p.slug === startSlug && pages.length > 1 ? html`<span class="start-badge">Start here</span>` : ''}${p.updated ? html`<span>Updated ${fmtDate(p.updated)}</span>` : ''}</span></span>
+        <span class="row-meta">${ch && ch.length ? html`<span class="new-tag">${ch.length} new</span>` : ''}${p.linked ? html`<span class="from-tag" data-tab="${p.tab}">In ${TAB[p.tab] ? TAB[p.tab].name : p.tab}</span>` : ''}${draftTag(`${p.tab}/${p.slug}`)}${!p.linked && p.slug === startSlug && pages.length > 1 ? html`<span class="start-badge">Start here</span>` : ''}${p.updated ? html`<span>Updated ${fmtDate(p.updated)}</span>` : ''}</span></span>
         ${status}${chev()}</a>`);
     });
     render(main, html`<div class="hn-page"><h1 class="large-title">${t.name}</h1><p class="subtitle">${t.blurb}</p>
-      ${notesRow(tab)}${dueN ? html`<div class="group gap-b"><a class="hn-row with-icon" href="#/review/${tab}"><span class="icon-tile it-review">${icon('i-review')}</span>
+      ${audienceRow(tab)}${notesRow(tab)}${dueN ? html`<div class="group gap-b"><a class="hn-row with-icon" href="#/review/${tab}"><span class="icon-tile it-review">${icon('i-review')}</span>
       <span class="row-main"><span class="row-title">Review</span></span><span class="row-value">${dueN} due</span>${chev()}</a></div>` : ''}
       ${symN || fieldN ? html`<div class="group gap-b">
         ${symN ? html`<a class="hn-row with-icon" href="#/symptoms/${tab}"><span class="icon-tile it-symptoms">${icon('i-wrench')}</span><span class="row-main"><span class="row-title">Troubleshooting</span></span><span class="row-value">${symN}</span>${chev()}</a>` : ''}
         ${fieldN ? html`<a class="hn-row with-icon" href="#/field/${tab}"><span class="icon-tile it-field">${icon('i-globe')}</span><span class="row-main"><span class="row-title">In the Field</span></span><span class="row-value">${fieldN}</span>${chev()}</a>` : ''}</div>` : ''}
       ${pages.length ? groups.map(g => html`${g.g ? html`<p class="group-label">${g.g}</p>` : ''}<div class="group">${g.rows}</div>`) : html`<div class="empty"><strong>No Pages Yet</strong></div>`}</div>`);
+    bindAudience(tab);
     watchLargeTitle();
+  }
+
+  // Who can read a notebook (editors see it; the tile admin changes it): everyone with HVAC Notes, or selected users,
+  // who hold the tile right nb_<notebook> given on the DAME admin page. Selected with nobody given the right = hidden.
+  const rightOf = tab => 'nb_' + tab.replace(/-/g, '_');
+  function audienceRow(tab) {
+    if (!D.editor) return '';
+    const sel = D.audienceOf(tab) === 'selected';
+    return html`<div class="group gap-b vis-row" id="vis-row"><div class="hn-row"><span class="row-main"><span class="row-title">Who can read</span>
+      <span class="row-sub">${sel ? html`Selected users: those given the right <span class="mono">${rightOf(tab)}</span> on the DAME admin page (Tiles &gt; HVAC Notes &gt; Access). Editors always can.` : 'Everyone with HVAC Notes. Drafts stay with editors until approved.'}</span></span>
+      ${D.approver ? html`<div class="seg vis-seg" role="group" aria-label="Who can read"><button type="button" data-aud="all" aria-pressed="${!sel}">All users</button><button type="button" data-aud="selected" aria-pressed="${sel}">Selected users</button></div>` : html`<span class="row-value">${sel ? 'Selected users' : 'All users'}</span>`}</div></div>`;
+  }
+  function bindAudience(tab) {
+    main.querySelectorAll('[data-aud]').forEach(b => b.addEventListener('click', async () => {
+      const v = b.dataset.aud;
+      if (v === D.audienceOf(tab)) return;
+      const ok = await Core.confirm(v === 'selected'
+        ? `Only users given the right ${rightOf(tab)} will see ${TAB[tab].name}. Until someone has it, the notebook is hidden from everyone but editors.`
+        : `Everyone with HVAC Notes will see the approved pages of ${TAB[tab].name}.`, { title: v === 'selected' ? 'Selected users' : 'All users', ok: 'Change' });
+      if (!ok) return;
+      try { await D.setAudience(tab, v); A.forgetIndex(); IDXC = null; toast(v === 'selected' ? `${TAB[tab].name}: selected users` : `${TAB[tab].name}: all users`); route(); }
+      catch (err) { Core.showError(err); }
+    }));
+  }
+
+  // A draft (editors only): who sees it, and Approve for the tile admin. An approved page: Hide for the tile admin.
+  function visBar(tab, slug) {
+    const r = `${tab}/${slug}`, draft = D.draft(r);
+    if (draft) return html`<div class="vis-bar draft no-hl" id="vis-bar"><span class="draft-tag">Draft</span><span class="vis-text">Only editors see this page${D.approver ? '' : ' until the tile admin approves it'}.</span>${D.approver ? html`<button class="btn small primary" type="button" data-vis="approved">Approve</button>` : ''}</div>`;
+    if (D.approver) return html`<div class="vis-bar no-hl" id="vis-bar"><span class="vis-text">Open to readers.</span><button class="btn small" type="button" data-vis="draft">Hide</button></div>`;
+    return null;
+  }
+  function bindVis(tab, slug) {
+    const b = main.querySelector('[data-vis]');
+    if (!b) return;
+    b.addEventListener('click', async () => {
+      const to = b.dataset.vis;
+      if (to === 'draft' && !(await Core.confirm('Readers will no longer see this page, its highlights and notes, or its search entries, until you approve it again.', { title: 'Hide page', ok: 'Hide', danger: true }))) return;
+      try {
+        await Core.busy(b, () => D.setStatus([`${tab}/${slug}`], to));
+        A.forgetIndex(); IDXC = null;
+        toast(to === 'approved' ? 'Approved: readers can open it now' : 'Hidden from readers');
+        A.R = null; route();                       // same address: draw the page again
+      } catch (err) { Core.showError(err); }
+    });
   }
 
   let nbTab = null;           // notebook whose highlights are shown and exported
@@ -705,6 +752,8 @@
       metaNodes.push(html`<p class="grew no-hl">${firstId ? html`<a href="#/${tab}/${slug}/${firstId}">${label}</a>` : html`<span>${label}</span>`}</p>`);
     }
     if (ip) markSeen(ip);
+    const vb = D.editor ? visBar(tab, slug) : null;
+    if (vb) metaNodes.unshift(vb);
     if (metaNodes.length) { if (h1) h1.after(...metaNodes); else tpl.prepend(...metaNodes); }
     const prev = i > 0 ? pages[i - 1] : null, next = i >= 0 && i < pages.length - 1 ? pages[i + 1] : null;
     const rel = relatedOf(idx, tab, slug, meta, [prev, next].filter(Boolean).map(p => `${tab}/${p.slug}`));
@@ -747,6 +796,7 @@
     mountWidgets(book, tab, slug);
     applyHighlights(book);
     bindReader();
+    bindVis(tab, slug);
     const saved = m().positions[`${tab}/${slug}`];
     const f = saved && saved.f < 0.98 ? saved.f : 0;
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
@@ -1670,7 +1720,8 @@
     root.classList.remove('pages-mode', 'chrome-hidden'); A.R = null; delete root.dataset.layout;
     const stayFull = immersive() && a && TAB[a] && b;           // full-screen reading carries on to the next page
     try {
-      if (!a) await viewLibrary();
+      if ((a && TAB[a] && D.closed(a)) || (['notebook', 'review', 'symptoms', 'field'].includes(a) && b && D.closed(b))) viewMissing();
+      else if (!a) await viewLibrary();
       else if (a === 'notebook') viewNotebook(b);
       else if (a === 'review') await viewReview(b);
       else if (a === 'symptoms') await viewSymptoms(b || where.tab || TABS[0].id);

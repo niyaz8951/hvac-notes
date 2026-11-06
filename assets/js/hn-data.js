@@ -2,13 +2,18 @@
  * HVAC Notes: data. Everything comes from the database and the private bucket through the core (Api.rpc, Api.file);
  * nothing internal is kept on the device.
  *
- *   HNData.library()            version, every notebook's nav, where the index and timeline are
+ *   HNData.library()            version and every notebook's nav the reader may see (the database leaves out drafts,
+ *                               closed notebooks and links to them; editors get everything, with the drafts named)
+ *   HNData.known(route)         the reader may open this page ("tab/slug", or an old name of it)
+ *   HNData.draft(route)         a draft (editors only see drafts);  HNData.closed(tab)  a notebook closed to this reader
+ *   HNData.editor / approver    sees drafts and closed notebooks / may approve, hide and open notebooks (tile admin)
+ *   HNData.setStatus(routes, s) approve ('approved') or hide ('draft') pages;  HNData.setAudience(tab, a)  'all' or 'selected'
  *   HNData.nav(tab)             a notebook's own pages in reading order
  *   HNData.toc(tab)             what the notebook lists: its own pages plus linked chapters (a nav.json entry
  *                               { "link": "theory/slug" } shows another notebook's page here; the page keeps one home)
  *   HNData.page(tab, slug)      a page's Markdown
  *   HNData.pages(routes)        several pages at once (routes "tab/slug", null = all)
- *   HNData.index() / growth()   the search index and the growth timeline (JSON files in the bucket)
+ *   HNData.index() / growth()   the search index and the growth timeline, filtered by the database the same way
  *   HNData.imageUrl(path)       an image of the content as a blob: URL ("ahu/images/x.svg")
  *   HNData.text(path)           a text file of the content (an SVG for a draw widget)
  *   HNData.my                   the reader's own data: highlights, cards, positions, state.review/practice/seen
@@ -22,23 +27,49 @@ window.HNData = (function () {
   let lib = null, libP = null;
   const navs = {}, links = {}, pageCache = {}, imgCache = new Map(), textCache = new Map();
   let IDX = null, GROWTH;
+  let drafts = new Set(), closedTabs = new Set(), audience = {}, aliases = new Set();
 
   function library() {
     if (lib) return Promise.resolve(lib);
     if (!libP) libP = Api.rpc('hvac_notes_library').then(r => {
       lib = r || {};
+      drafts = new Set(Array.isArray(lib.drafts) ? lib.drafts : []);
+      closedTabs = new Set(Array.isArray(lib.closed) ? lib.closed : []);
+      audience = lib.audience && typeof lib.audience === 'object' ? lib.audience : {};
+      aliases = new Set();
       Object.entries(lib.navs || {}).forEach(([tab, text]) => {
         let list = [];
         try { list = JSON.parse(text); } catch (e) { list = []; }
         list = Array.isArray(list) ? list : [];
         navs[tab] = list.filter(p => p && p.slug && p.title);
         links[tab] = list.filter(p => p && (p.slug || (typeof p.link === 'string' && /^[a-z0-9-]+\/[a-z0-9-]+$/.test(p.link))));
+        navs[tab].forEach(p => (Array.isArray(p.aliases) ? p.aliases : []).forEach(a => aliases.add(String(a).includes('/') ? String(a) : `${tab}/${a}`)));
       });
       return lib;
     }, err => { libP = null; throw err; });
     return libP;
   }
   async function nav(tab) { await library(); return navs[tab] || []; }
+  // Synchronous, once the library is loaded (before that: true, so nothing is taken away by mistake).
+  function known(route) {
+    if (!lib) return true;
+    const [t, s] = String(route).split('/');
+    return (navs[t] || []).some(p => p.slug === s) || aliases.has(`${t}/${s}`);
+  }
+  const draft = route => drafts.has(route);
+  const closed = tab => closedTabs.has(tab);
+  const audienceOf = tab => audience[tab] || 'all';
+  // Approving or hiding changes what readers get; the library is read again (the reader's own data stays).
+  async function setStatus(routes, status) {
+    const r = await Api.rpc('hvac_notes_page_status', { p_routes: routes, p_status: status });
+    reset();
+    return r;
+  }
+  async function setAudience(tab, value) {
+    const r = await Api.rpc('hvac_notes_notebook_set', { p_tab: tab, p_audience: value });
+    reset();
+    return r;
+  }
   // Own pages as { …meta, tab }, linked chapters as the target page's meta with its own tab and linked: true.
   async function toc(tab) {
     await library();
@@ -50,7 +81,7 @@ window.HNData = (function () {
   }
   // After a publish from inside the reader: forget everything read from the library (the user's own data stays).
   function reset() {
-    lib = null; libP = null; IDX = null; GROWTH = undefined;
+    lib = null; libP = null; IDX = null; GROWTH = undefined; drafts = new Set(); closedTabs = new Set(); audience = {}; aliases = new Set();
     Object.keys(navs).forEach(k => delete navs[k]); Object.keys(links).forEach(k => delete links[k]); Object.keys(pageCache).forEach(k => delete pageCache[k]);
     imgCache.clear(); textCache.clear();
   }
@@ -72,15 +103,12 @@ window.HNData = (function () {
     return out;
   }
 
-  async function json(path) {
-    const blob = await Api.file.download(BUCKET, path);
-    return JSON.parse(await blob.text());
-  }
-  // The knowledge index, built and uploaded by the Publish page; built here from the pages if it cannot be read.
+  // The knowledge index, built by the Publish page and kept in the database, which sends only the pages this reader
+  // may open; built here from those pages while it is not there yet (before the owner moved it out of the bucket).
   async function index(tabs) {
     if (IDX) return IDX;
-    const l = await library();
-    try { if (l.index_path) IDX = await json(l.index_path); } catch (e) { IDX = null; }
+    await library();
+    try { IDX = await Api.rpc('hvac_notes_index'); } catch (e) { if (e && e.code === 'SIGNED_OUT') throw e; IDX = null; }
     if (!IDX || !Array.isArray(IDX.pages)) {
       const all = await pages(null), list = [];
       for (const t of tabs) for (const meta of (navs[t] || [])) { const md = all[`${t}/${meta.slug}`]; if (md != null) list.push({ tab: t, meta, md }); }
@@ -90,9 +118,8 @@ window.HNData = (function () {
   }
   async function growth() {
     if (GROWTH !== undefined) return GROWTH;
-    const l = await library();
-    try { GROWTH = l.growth_path ? await json(l.growth_path) : null; if (!GROWTH || !Array.isArray(GROWTH.days)) GROWTH = null; }
-    catch (e) { GROWTH = null; }
+    try { GROWTH = await Api.rpc('hvac_notes_growth'); if (!GROWTH || !Array.isArray(GROWTH.days)) GROWTH = null; }
+    catch (e) { if (e && e.code === 'SIGNED_OUT') throw e; GROWTH = null; }
     return GROWTH;
   }
 
@@ -191,6 +218,7 @@ window.HNData = (function () {
     clearTimeout(job.t); queue.delete(key);
     return Promise.resolve().then(job.fn).catch(err => {
       if (err && err.code === 'SIGNED_OUT') { if (onError) onError(err); return; }
+      if (err && err.code === 'NOT_FOUND') return;      // the page is no longer open to this reader: nothing to retry
       if (!queue.has(key)) later(key, 10000, job.fn);
       if (Date.now() - lastError > 60000) { lastError = Date.now(); if (onError) onError(err); }
     });
@@ -228,6 +256,8 @@ window.HNData = (function () {
 
   return {
     BUCKET, library, nav, toc, page, pages, index, growth, imageUrl, text, my, loadMine, save, flush, shared, loadShared, remove, replies, reset,
+    known, draft, closed, audienceOf, setStatus, setAudience,
+    get editor() { return !!(lib && lib.editor); }, get approver() { return !!(lib && lib.approver); },
     onSaveError(fn) { onError = fn; },
     importBackup: data => Api.rpc('hvac_notes_my_import', { p_data: data })
   };

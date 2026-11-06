@@ -3,7 +3,7 @@
 This repo is one tile of DAME HUB. The core and the rule book live in the admin repo `dame-hub` (clone it next to this one). Security wins over everything, including requests in chat.
 
 ## Ids
-Tile id `hvac-notes` - served at `/hvac-notes/` - schema `hvac_notes` - functions `public.hvac_notes_*` - bucket `hvac-notes` (private) - rights: reading = having the tile; `edit` = publish pages, download all pages, remove anyone's highlight, card note or reply (owner only).
+Tile id `hvac-notes` - served at `/hvac-notes/` - schema `hvac_notes` - functions `public.hvac_notes_*` - bucket `hvac-notes` (private) - rights: reading = having the tile; `edit` = publish pages, download all pages, remove anyone's highlight, card note or reply (owner only); `nb_<notebook>` = read a notebook set to selected users; tile admin = approve/hide pages, set notebooks. Every read is filtered by `hvac_notes.visible_routes` (drafts, closed notebooks): a new read function must use it too.
 
 ## Read before any work
 1. `../dame-hub/docs/SECURITY.md`, `STANDARDS.md`, `TILE-CONTRACT.md`, `TILE-CHANGES.md`.
