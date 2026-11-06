@@ -20,8 +20,8 @@
 | `db/hvac_notes/001_init.sql` | 2026-11-04 (same project) | 2026-11-04 |
 | `db/hvac_notes/002_replies.sql` | 2026-11-04 | 2026-11-04 |
 | `db/hvac_notes/003_names.sql` (superseded by 004) | - | 2026-11-05, then the owner put the 002 body of `hvac_notes_shared()` back by hand (sharing broke); `core.migrations` still lists 003 |
-| `db/hvac_notes/004_names_no_temp.sql` | - | **to apply** |
-| `db/hvac_notes/005_visibility.sql` | - | **to apply, after 004** |
+| `db/hvac_notes/004_names_no_temp.sql` | - | by 2026-11-06 (Admin > Health: all applied) |
+| `db/hvac_notes/005_visibility.sql` | - | by 2026-11-06 (Admin > Health: all applied). Health then shows only the two pg_cron policies (core, see `docs/CORE-REQUESTS.md`) |
 | `db/hvac_notes/tests.sql` (check only, rolled back) | 2026-11-04 | - |
 
 **After 004, the owner checks:** two accounts that both have the tile, each with a highlight with a note, a card note, and a reply under the other's highlight. Each sees the other's highlight, card note and reply with the other's name (Highlights & Notes > Everyone, Discussions). Admin > Health > Run check now says **Clean**; `select * from core.security_check();` returns no rows; Security Advisor shows nothing new.
