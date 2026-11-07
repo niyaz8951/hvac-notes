@@ -1,5 +1,5 @@
 /*
- * HVAC Notes: the Publish page (right 'edit').
+ * HVAC Notes: the Publish page (level edit on every notebook; one publish carries the whole library's index and timeline).
  *
  * The owner picks a zip or a folder of pages on his computer. The page merges it over what is published, runs the
  * quality check (lint.js, the same rules as tools/lint.mjs), builds the knowledge index (indexer.js, shared with the
@@ -8,7 +8,8 @@
  *   2. pages, nav.json, the image list, the index and the timeline in one database call
  *      (public.hvac_notes_publish_commit), all or nothing; the database gives each reader only what he may read
  *   3. images no longer used (and the old index and timeline files, from before 005) are deleted from the bucket.
- * New pages arrive as drafts: the tile admin approves them on the page. A changed page keeps its status.
+ * New pages arrive as drafts: approve (on that notebook) approves them on the page. A changed page keeps its status.
+ * "This is the whole library" (removing pages, notebooks and images the upload does not have) is the manager's.
  * Download all pages gives the published library back as a zip (the authoring copy and a backup).
  * No key or password is involved anywhere: the database checks the right on every call.
  */
@@ -42,13 +43,21 @@
   async function load() {
     const box = $('#lib');
     render(box, html`<div class="loading-veil"><span class="spin"></span>Loading the library</div>`);
-    const ex = await Api.rpc('hvac_notes_publish_export');
+    let ex;
+    try { ex = await Api.rpc('hvac_notes_publish_export'); } catch (err) {
+      if (!err || err.code !== 'NO_RIGHT') throw err;
+      render(box, html`<h2>Publish</h2><p class="notice warning">Publishing changes the whole library (its search index and timeline), so it needs edit on every notebook. A notebook is shared with you to view only, or not at all: ask a manager to share it with you (Share, on the notebook page).</p>`);
+      const up = host.querySelector('#upload'); if (up) up.hidden = true;
+      return;
+    }
     cur = {
       version: ex.version, published_at: ex.published_at, credits: ex.credits || '',
       navs: ex.navs || {}, pages: new Map((ex.pages || []).map(p => [`${p.tab}/${p.slug}`, p.md])),
       files: new Map((ex.files || []).map(f => [f.path, f])), index_path: ex.index_path, growth_path: ex.growth_path,
-      index: ex.index || null, growth: ex.growth || null, drafts: Object.keys(ex.status || {}).sort()
+      index: ex.index || null, growth: ex.growth || null, drafts: Object.keys(ex.status || {}).sort(), manager: !!ex.manager
     };
+    const wl = host.querySelector('.hp-whole'); if (wl) wl.hidden = !cur.manager;
+    const wc = $('#whole'); if (wc && !cur.manager) wc.checked = false;
     // Before 005 the index and timeline were files in the bucket: read them from there until they are moved.
     if (!cur.index && cur.index_path) cur.index = await bucketJson(cur.index_path).catch(() => null);
     if (!cur.growth && cur.growth_path) cur.growth = await bucketJson(cur.growth_path).catch(() => null);
@@ -57,7 +66,7 @@
     render(box, html`<div class="row between"><h2>Published</h2>${cur.version ? html`<span class="badge brand">Version ${cur.version}</span>` : html`<span class="badge">Nothing yet</span>`}</div>
       ${cur.version ? html`<p class="muted">${Core.dateTime(cur.published_at)} · ${plural(tabs.length, 'notebook', 'notebooks')} · ${plural(cur.pages.size, 'page', 'pages')} · ${plural(cur.files.size, 'image', 'images')}${cur.growth ? ` · timeline of ${plural(cur.growth.days.length, 'day', 'days')}` : ''}</p>
         <div class="hp-tabs">${tabs.map(t => html`<span class="chip">${t} · ${(parseNav(cur.navs[t]) || []).length}</span>`)}</div>
-        ${cur.drafts.length ? html`<p class="notice warning">${plural(cur.drafts.length, 'draft', 'drafts')} waiting for approval (only editors see ${cur.drafts.length === 1 ? 'it' : 'them'}): ${cur.drafts.map((r, i) => html`${i ? ', ' : ''}<a href="./#/${r}" class="mono">${r}</a>`)}. Open a page and press Approve.</p>` : ''}
+        ${cur.drafts.length ? html`<p class="notice warning">${plural(cur.drafts.length, 'draft', 'drafts')} waiting for approval (only editors see ${cur.drafts.length === 1 ? 'it' : 'them'}; approve approves): ${cur.drafts.map((r, i) => html`${i ? ', ' : ''}<a href="./#/${r}" class="mono">${r}</a>`)}. Open a page and press Approve.</p>` : ''}
         ${move ? html`<div class="notice brand hp-move"><p>The search index and the timeline are still files in the bucket. Move them into the database, where each reader gets only the pages he may read. Nothing else changes.</p><button class="btn primary" type="button" id="move">Move now</button></div>` : ''}
         <div class="row hp-gap"><button class="btn" type="button" id="export">Download all pages</button><span class="muted small-note">A zip of every notebook (nav.json, pages, images), CREDITS.md and the timeline: the copy to edit, and a backup.</span></div>`
       : html`<p class="muted">The library is empty. Upload the pages below to publish them for the first time.</p>`}`);
@@ -232,7 +241,7 @@
       ${p.any ? html`<div class="table-wrap"><table><tbody>${rows.map(([label, list]) => html`<tr><th>${label} (${list.length})</th><td class="hp-list">${list.slice(0, 40).join(', ')}${list.length > 40 ? ` and ${list.length - 40} more` : ''}</td></tr>`)}
         ${p.creditsChanged ? html`<tr><th>CREDITS.md</th><td>changed</td></tr>` : ''}</tbody></table></div>` : html`<p class="notice">Nothing to publish: every page, list and image is the same as what is published.</p>`}
       ${p.items.length ? html`<h3 class="hp-h3">Timeline, ${today()}</h3><ul class="hp-ul">${p.items.map(it => html`<li><span class="mono">${it.route}</span> ${it.kind === 'new' ? 'new page' : [it.added.length ? plural(it.added.length, 'section added', 'sections added') : '', it.changed.length ? plural(it.changed.length, 'section changed', 'sections changed') : '', it.terms.length ? plural(it.terms.length, 'card added', 'cards added') : '', it.symptoms ? plural(it.symptoms, 'symptom', 'symptoms') : '', it.checks ? plural(it.checks, 'question', 'questions') : ''].filter(Boolean).join(', ')}</li>`)}</ul>` : ''}
-      ${p.added.length ? html`<p class="notice warning">New pages arrive as drafts: only editors see them until the tile admin opens each one and presses Approve. Changed pages keep their status.</p>` : ''}
+      ${p.added.length ? html`<p class="notice warning">New pages arrive as drafts: only editors see them until someone with approve on the notebook opens each one and presses Approve. Changed pages keep their status.</p>` : ''}
       ${p.empty ? html`<p class="notice brand">First publish.${p.baseline ? ' The old site\'s index is the starting point, so only pages that differ from it count as changed.' : ''}${p.startLog ? ` The old timeline (${plural(p.startLog.days.length, 'day', 'days')}) is carried over.` : ''}</p>` : ''}
       <h3 class="hp-h3">Check</h3>
       ${s.blocking.length ? html`<div class="notice danger"><strong>${plural(s.blocking.length, 'error', 'errors')} on pages in this publish: fix them, then upload again.</strong><ul class="hp-ul">${s.blocking.map(issue)}</ul></div>` : html`<p class="notice success">No errors on the pages in this publish.</p>`}
@@ -319,7 +328,7 @@
   function mount(where) {
     host = where; plan = null; cur = null; busy = false;
     render(where, html`<div class="card" id="lib"></div>
-      <div class="card">
+      <div class="card" id="upload">
         <h2>Upload pages</h2>
         <p class="muted">A zip or a folder that holds notebook folders (theory, refrigeration, chillers, ahu, fcu, systems, ashrae), each with its <span class="mono">nav.json</span>, its pages (<span class="mono">&lt;slug&gt;.md</span>) and an <span class="mono">images/</span> folder, plus <span class="mono">CREDITS.md</span>. Pages you leave out stay as they are; a page its notebook's new <span class="mono">nav.json</span> no longer lists is removed.</p>
         <div class="row">
@@ -328,7 +337,7 @@
           <label class="btn" for="dir">Choose a folder</label>
           <input type="file" id="dir" webkitdirectory multiple hidden>
         </div>
-        <label class="check hp-whole"><input type="checkbox" id="whole"> This is the whole library: remove published pages and images it does not have</label>
+        <label class="check hp-whole" hidden><input type="checkbox" id="whole"> This is the whole library: remove published pages and images it does not have (managers)</label>
         <p class="hint">Nothing is published until you check the result below and press Publish.</p>
       </div>
       <div class="card" id="review" hidden></div>`);
@@ -339,9 +348,9 @@
   }
   window.HNPublish = { mount };
 
-  // Stand-alone page (publish.html): guard with the right, then mount into main.
+  // Stand-alone page (publish.html): guard with the level, then mount into main (the database checks every notebook).
   if (document.body.dataset.page === 'publish') {
-    Core.requireLogin({ tile: 'hvac-notes', right: 'edit' }).then(() => {
+    Core.requireLogin({ tile: 'hvac-notes', level: 'edit' }).then(() => {
       Core.setTitle('Publish · HVAC Notes');
       mount(document.querySelector('#pub-host')).catch(err => { Core.showState('Cannot load', Api.errorMessage(err), { href: location.pathname, label: 'Try again' }); });
     });

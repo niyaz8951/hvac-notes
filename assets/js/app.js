@@ -199,14 +199,16 @@
     cardNotes(key).forEach(x => card.insertBefore(one(html`<button class="kcard-note no-hl ${x.mine ? '' : 'other'}" type="button">${icon('i-note')}<span>${noteBy(x.by)}${x.note}</span>${replyBadge(replyCount('card', x.id))}</button>`), edit));
   }
   // Replies under a note (questions and answers). kind 'highlight' + highlight id, or 'card' + card row id.
+  // tab: the note's notebook. Replying needs contribute there, removing someone else's reply approve (the database checks).
   const replyCount = (kind, ref) => ref == null ? 0 : D.replies.of(kind, ref).length;
-  function thread(kind, ref, onChange) {
+  function thread(kind, ref, onChange, tab) {
     const box = document.createElement('div'); box.className = 'thread';
     const draw = () => {
       const list = ref == null ? [] : D.replies.of(kind, ref);
       render(box, list.map(x => html`<div class="reply ${x.mine ? 'mine' : ''}">${noteBy(x.by, x.created)}<p class="note-text">${x.body}</p>
-          ${x.mine || canPublish() ? html`<button class="link-btn danger small" type="button" data-rm="${x.id}">Delete</button>` : ''}</div>`),
+          ${x.mine || D.can(tab, 'approve') ? html`<button class="link-btn danger small" type="button" data-rm="${x.id}">Delete</button>` : ''}</div>`),
         ref == null ? html`<p class="sheet-hint">Replies can be added once the note is saved.</p>`
+          : !D.can(tab, 'contribute') ? (list.length ? '' : html`<p class="sheet-hint">No replies yet.</p>`)
           : html`<form class="reply-form"><textarea class="note-input reply-input" rows="1" placeholder="${list.length ? 'Reply' : 'Reply or answer'}" aria-label="Reply" maxlength="5000"></textarea>
             <button class="btn primary small" type="submit">Send</button></form>`);
       box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
@@ -231,14 +233,15 @@
   }
   const replyBadge = n => n ? html`<span class="reply-n" title="${n} ${n === 1 ? 'reply' : 'replies'}">${n}</span>` : '';
 
-  // Everyone else's notes on a card, in a sheet or focus mode; with 'edit', each can be removed. Each has its thread.
+  // Everyone else's notes on a card, in a sheet or focus mode; with approve on its notebook, each can be removed.
+  // Each has its thread.
   function otherNotes(key, onChange) {
-    const list = cardOthers(key);
+    const list = cardOthers(key), tab = key.split('/')[0];
     if (!list.length) return '';
     const box = one(html`<div class="other-notes"><p class="sheet-sec">From others</p>${list.map(x => html`<div class="other-note">
       ${noteBy(x.by, x.updated)}<p class="note-text">${x.note}</p>
-      ${canPublish() ? html`<button class="link-btn danger small" type="button" data-rm="${x.id}">Remove</button>` : ''}
-      ${thread('card', x.id, onChange)}</div>`)}</div>`);
+      ${D.can(tab, 'approve') ? html`<button class="link-btn danger small" type="button" data-rm="${x.id}">Remove</button>` : ''}
+      ${thread('card', x.id, onChange, tab)}</div>`)}</div>`);
     box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
       const x = list.find(n => String(n.id) === b.dataset.rm);
       if (!x || !await Core.confirm(`Remove ${x.by}'s note on this card? This cannot be undone.`, { ok: 'Remove', danger: true })) return;
@@ -250,12 +253,12 @@
 
   function openCard(card) {
     const key = card.dataset.k, h = card.querySelector('h3'), title = h ? h.textContent : key;
-    const cur = cardColor(key);
+    const cur = cardColor(key), tab = key.split('/')[0], write = D.can(tab, 'contribute');
     openSheet(html`<div class="sheet-head"><span></span><h2>${title}</h2><button class="link-btn" type="button" data-close>Done</button></div>
       <div class="sheet-swatches kswatches" role="group" aria-label="Colour">${KCOLORS.map(([c, name]) => html`<button class="kswatch" type="button" data-c="${c}" aria-pressed="${c === cur}" aria-label="${name}" title="${name}"></button>`)}</div>
-      <textarea class="note-input" id="card-note" placeholder="Note" aria-label="Note"></textarea>
-      <p class="sheet-hint">Your note is seen by everyone with HVAC Notes. The colour is yours only.</p>
-      ${(cardState[key] || {}).note ? [html`<p class="sheet-sec">Replies to your note</p>`, thread('card', (cardState[key] || {}).row, () => paintCard(card))] : ''}
+      ${write ? html`<textarea class="note-input" id="card-note" placeholder="Note" aria-label="Note"></textarea>
+      <p class="sheet-hint">Your note is seen by everyone with HVAC Notes. The colour is yours only.</p>` : html`<p class="sheet-hint">${viewOnly}</p>`}
+      ${(cardState[key] || {}).note ? [html`<p class="sheet-sec">Replies to your note</p>`, thread('card', (cardState[key] || {}).row, () => paintCard(card), tab)] : ''}
       ${otherNotes(key, () => paintCard(card))}`, body => {
       body.querySelectorAll('.kswatch').forEach(b => b.onclick = () => {
         Object.assign(cardEntry(key, title), { color: b.dataset.c, title, updated: new Date().toISOString() }); D.save.card(key, 0);
@@ -263,6 +266,7 @@
         paintCard(card);
       });
       const note = $('#card-note');
+      if (!note) return;
       note.value = (cardState[key] || {}).note || '';
       note.oninput = debounce(() => {
         Object.assign(cardEntry(key, title), { note: note.value.trim(), title, updated: new Date().toISOString() }); D.save.card(key);
@@ -616,7 +620,10 @@
   }
   const unansweredCount = () => discussions().filter(x => x.note && !x.answered).length;
 
-  const canPublish = () => !!(Core.user && (Core.user.is_super || (Core.user.rights || []).indexOf('edit') >= 0));
+  // Publishing needs edit on every notebook (the library says so once loaded; before that, the tile level).
+  const canPublish = () => D.loaded ? D.editor : !!(Core.user && (Core.user.is_super || Core.atLeast('edit')));
+  // A notebook shared with him to view only: he reads; highlights, notes and replies are off there.
+  const viewOnly = 'View only: you can read this notebook, but not add highlights, notes or replies here.';
 
   async function renderSidebar() {
     const navs = await Promise.all(TABS.map(t => loadToc(t.id)));
@@ -866,7 +873,7 @@
     saveReview, savePractice, toast, copyText, loadNav, loadToc, loadPage, renderMarkdown, renderInline, autoColor, cardColor,
     cardNotesOf, notesCount, cardEntry, cardify, paintCard, openCard, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, enhance, fieldItem, markWide, loadImages,
     applySettings, updateThemeColor, backBtn, searchBtn, focusBtn, setNav, watchLargeTitle, renderTabbar, where, setActive,
-    canPublish, renderSidebar, discussions, shown, draftTag, forgetIndex, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
+    canPublish, viewOnly, renderSidebar, discussions, shown, draftTag, forgetIndex, coverArt, getIndex, pageOf, aliasMap, migrateAliases, routeOf, relatedOf, reviewPool, dueOf,
     changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY
   };
   // Functions part 2 provides, used above.

@@ -1,7 +1,7 @@
 // Browser test for HVAC Notes (test harness only). Needs tools/test/mock.mjs running on :8080 over a database built by
 // tools/test/db.sh, and the invented library zipped at $FIXTURE (tools/test/run.sh does all of it).
-// Publishes the invented library as demo_admin (tile admin), approves the drafts, opens a notebook to selected users,
-// reads it as demo_user, checks refusals for demo_none and for a reader on the Publish page, and fails on any console
+// Publishes the invented library as demo_admin (manage), approves the drafts, shares a notebook from the core's Access
+// panel (private, then Can view for demo_user), reads as demo_user (contribute), checks refusals for demo_none and for a reader on the Publish page, and fails on any console
 // error or Content Security Policy report.
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -54,7 +54,7 @@ await admin.waitForSelector('#review .notice');
 ok(/Nothing to publish/.test(await text(admin, '#review')), 'the export uploaded again changes nothing');
 ok(admin.problems.length === 0, 'Publish page: no console errors or CSP reports' + (admin.problems.length ? ': ' + admin.problems.join(' | ') : ''));
 
-// 2. drafts: the reader gets none; the tile admin approves page by page
+// 2. drafts: the reader gets none; approve approves page by page
 const user = await session('demo_user', 'dark');
 const rpc = (pg, name, args) => pg.evaluate(async ([n, a]) => { try { return await Api.rpc(n, a); } catch (e) { return 'ERR:' + e.code; } }, [name, args || {}]);
 await user.goto(BASE + '/hvac-notes/');
@@ -79,22 +79,36 @@ for (const r of ['theory/test-basics', 'chillers/test-wall', 'chillers/terms']) 
 await user.goto(BASE + '/hvac-notes/#/theory/test-second'); await user.reload(); await user.waitForSelector('#book .video-card');
 ok(!!(await user.$('#book a[href="#/theory/test-basics"]')), 'once approved, the link works');
 ok(sql("select count(*) from core.audit where tile_id = 'hvac-notes' and action = 'page_approved'") === '4', 'every approval is audited');
-// notebook for selected users: chillers
-await admin.goto(BASE + '/hvac-notes/#/chillers'); await admin.waitForSelector('#vis-row [data-aud="selected"]');
-await admin.click('#vis-row [data-aud="selected"]'); await admin.click('.sheet .actions button.primary');
-await admin.waitForSelector('#vis-row [data-aud="selected"][aria-pressed="true"]');
-ok(/nb_chillers/.test(await text(admin, '#vis-row')) && sql("select audience from hvac_notes.notebooks where tab = 'chillers'") === 'selected', 'the tile admin opens Chillers to selected users (right nb_chillers)');
+// a notebook shared from the core's Access panel (Share on the notebook page, managers): Chillers for the people listed
+await admin.goto(BASE + '/hvac-notes/#/chillers'); await admin.waitForSelector('#vis-row [data-act="share"]');
+ok(/Everyone with HVAC Notes/.test(await text(admin, '#vis-row')), 'the manager sees who can open the notebook');
+await admin.click('#vis-row [data-act="share"]'); await admin.waitForSelector('#sh-everyone');
+await admin.selectOption('#sh-everyone', ''); await admin.click('.sheet .actions button.primary');
+await admin.waitForFunction(() => /Nobody but the managers/.test(document.querySelector('#vis-row').textContent));
+const chillers = () => sql("select coalesce(everyone, '-') || ':' || (select count(*) from core.shares s where s.tile_id = 'hvac-notes' and s.kind = 'notebook' and s.id = 'chillers') from core.containers where tile_id = 'hvac-notes' and kind = 'notebook' and id = 'chillers'");
+ok(chillers() === '-:0', 'the manager makes Chillers private (only those listed)');
 await user.goto(BASE + '/hvac-notes/'); await user.reload(); await user.waitForSelector('.shelf .book-item');
-ok((await user.$$('.shelf .book-item')).length === 6 && !(await user.$('.shelf .book-item[data-tab="chillers"]')) && !(await user.$('#tabbar [data-tab="chillers"]')), 'without the right, Chillers is off the shelf and the tab bar');
+ok((await user.$$('.shelf .book-item')).length === 6 && !(await user.$('.shelf .book-item[data-tab="chillers"]')) && !(await user.$('#tabbar [data-tab="chillers"]')), 'not listed: Chillers is off the shelf and the tab bar');
 await user.goto(BASE + '/hvac-notes/#/chillers/test-wall'); await user.waitForSelector('main .empty');
-ok(/Not Found/.test(await text(user, 'main')), 'a page of a closed notebook is Not Found');
-sql("update core.tile_access set rights = array['nb_chillers'] where tile_id = 'hvac-notes' and user_id = (select id from core.profiles where username = 'demo_user')");
-await user.goto(BASE + '/hvac-notes/'); await user.reload(); await user.waitForSelector('.shelf .book-item[data-tab="chillers"]');
-ok(true, 'with the right nb_chillers, the reader sees Chillers');
-sql("update core.tile_access set rights = '{}' where tile_id = 'hvac-notes' and user_id = (select id from core.profiles where username = 'demo_user')");
-await admin.click('#vis-row [data-aud="all"]'); await admin.click('.sheet .actions button.primary');
-await admin.waitForSelector('#vis-row [data-aud="all"][aria-pressed="true"]');
-ok(sql("select count(*) from hvac_notes.notebooks") === '0', 'back to all users');
+ok(/Not Found/.test(await text(user, 'main')), 'a page of a notebook not shared with him is Not Found');
+await admin.click('#vis-row [data-act="share"]'); await admin.waitForSelector('#sh-find');
+await admin.selectOption('#sh-add-level', 'read'); await admin.fill('#sh-find', 'demo_user'); await admin.click('.picks button');
+await admin.click('.sheet .actions button.primary');
+await admin.waitForFunction(() => /Only the one person or group listed/.test(document.querySelector('#vis-row').textContent));
+ok(chillers() === '-:1', 'the manager lists the reader with Can view');
+await user.goto(BASE + '/hvac-notes/#/chillers'); await user.reload(); await user.waitForSelector('#vis-row');
+ok(/View only/.test(await text(user, '#vis-row')), 'Can view: the notebook page says he reads only');
+await user.goto(BASE + '/hvac-notes/#/chillers/test-wall'); await user.waitForSelector('#book p');
+await user.evaluate(() => { const p = [...document.querySelectorAll('#book > p')].find(x => x.firstChild && x.firstChild.nodeType === 3 && x.firstChild.length > 10); const r = document.createRange(); r.setStart(p.firstChild, 0); r.setEnd(p.firstChild, 8); getSelection().removeAllRanges(); getSelection().addRange(r); });
+await user.waitForSelector('#hl-bar:not([hidden])');
+ok(await user.$eval('#hl-bar', b => b.classList.contains('copy-only') && getComputedStyle(b.querySelector('.swatch')).display === 'none'), 'Can view: selecting text offers Copy, no highlight');
+ok(await rpc(user, 'hvac_notes_highlight_save', { p_id: 'vw0001', p_tab: 'chillers', p_slug: 'test-wall', p_title: '', p_color: 'yellow', p_note: '', p_quote: { exact: 'x' } }) === 'ERR:NO_RIGHT', 'Can view: the database refuses a highlight (NO_RIGHT)');
+await user.evaluate(() => getSelection().removeAllRanges());
+await admin.click('#vis-row [data-act="share"]'); await admin.waitForSelector('#sh-everyone');
+await admin.selectOption('#sh-everyone', 'edit'); await admin.click('.sheet .actions button.primary');
+await admin.waitForFunction(() => /Everyone with HVAC Notes and 1 person or group listed/.test(document.querySelector('#vis-row').textContent));
+ok(chillers() === 'edit:1', 'back to everyone in the tile');
+ok(sql("select count(*) from core.audit where tile_id = 'hvac-notes' and action = 'share_set'") === '3', 'every sharing change is audited by the core');
 
 // 3. a reader
 await user.goto(BASE + '/hvac-notes/'); await user.reload();

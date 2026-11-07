@@ -3,11 +3,14 @@
  * nothing internal is kept on the device.
  *
  *   HNData.library()            version and every notebook's nav the reader may see (the database leaves out drafts,
- *                               closed notebooks and links to them; editors get everything, with the drafts named)
+ *                               notebooks not shared with him and links to them; publishers get everything)
  *   HNData.known(route)         the reader may open this page ("tab/slug", or an old name of it)
- *   HNData.draft(route)         a draft (editors only see drafts);  HNData.closed(tab)  a notebook closed to this reader
- *   HNData.editor / approver    sees drafts and closed notebooks / may approve, hide and open notebooks (tile admin)
- *   HNData.setStatus(routes, s) approve ('approved') or hide ('draft') pages;  HNData.setAudience(tab, a)  'all' or 'selected'
+ *   HNData.draft(route)         a draft (only edit and above see drafts);  HNData.closed(tab)  a notebook he may not open
+ *   HNData.level(tab)           his level on a notebook (read < contribute < edit < approve < manage; null = closed);
+ *                               HNData.can(tab, level) at least that level there. Showing and hiding only: the database decides.
+ *   HNData.editor / approver / manager   may publish (edit on every notebook) / approve somewhere / manages the tile
+ *   HNData.setStatus(routes, s) approve ('approved') or hide ('draft') pages
+ *   HNData.sharingOf(tab)       { everyone, shared, owner } for managers;  HNData.share(tab)  the core's Access panel
  *   HNData.nav(tab)             a notebook's own pages in reading order
  *   HNData.toc(tab)             what the notebook lists: its own pages plus linked chapters (a nav.json entry
  *                               { "link": "theory/slug" } shows another notebook's page here; the page keeps one home)
@@ -27,7 +30,7 @@ window.HNData = (function () {
   let lib = null, libP = null;
   const navs = {}, links = {}, pageCache = {}, imgCache = new Map(), textCache = new Map();
   let IDX = null, GROWTH;
-  let drafts = new Set(), closedTabs = new Set(), audience = {}, aliases = new Set();
+  let drafts = new Set(), closedTabs = new Set(), levels = null, sharing = {}, aliases = new Set();
 
   function library() {
     if (lib) return Promise.resolve(lib);
@@ -35,7 +38,8 @@ window.HNData = (function () {
       lib = r || {};
       drafts = new Set(Array.isArray(lib.drafts) ? lib.drafts : []);
       closedTabs = new Set(Array.isArray(lib.closed) ? lib.closed : []);
-      audience = lib.audience && typeof lib.audience === 'object' ? lib.audience : {};
+      levels = lib.levels && typeof lib.levels === 'object' ? lib.levels : null;
+      sharing = lib.sharing && typeof lib.sharing === 'object' ? lib.sharing : {};
       aliases = new Set();
       Object.entries(lib.navs || {}).forEach(([tab, text]) => {
         let list = [];
@@ -58,17 +62,26 @@ window.HNData = (function () {
   }
   const draft = route => drafts.has(route);
   const closed = tab => closedTabs.has(tab);
-  const audienceOf = tab => audience[tab] || 'all';
+  // His level on a notebook. Before 006 the library carried no levels: his tile level on every open notebook.
+  const RANK = ['read', 'contribute', 'edit', 'approve', 'manage'];
+  function level(tab) {
+    if (levels) return levels[tab] || null;
+    if (closedTabs.has(tab) || !window.Core || !Core.user) return null;
+    return Core.user.is_super ? 'manage' : (Core.user.level || null);
+  }
+  const can = (tab, min) => RANK.indexOf(level(tab)) >= RANK.indexOf(min) && RANK.indexOf(min) >= 0;
+  const sharingOf = tab => sharing[tab] || null;
   // Approving or hiding changes what readers get; the library is read again (the reader's own data stays).
   async function setStatus(routes, status) {
     const r = await Api.rpc('hvac_notes_page_status', { p_routes: routes, p_status: status });
     reset();
     return r;
   }
-  async function setAudience(tab, value) {
-    const r = await Api.rpc('hvac_notes_notebook_set', { p_tab: tab, p_audience: value });
-    reset();
-    return r;
+  // Who can open a notebook: the core's Access panel (managers). The library is read again when something changed.
+  async function share(tab) {
+    const changed = await Core.share({ kind: 'notebook', id: tab });
+    if (changed) reset();
+    return changed;
   }
   // Own pages as { …meta, tab }, linked chapters as the target page's meta with its own tab and linked: true.
   async function toc(tab) {
@@ -81,7 +94,7 @@ window.HNData = (function () {
   }
   // After a publish from inside the reader: forget everything read from the library (the user's own data stays).
   function reset() {
-    lib = null; libP = null; IDX = null; GROWTH = undefined; drafts = new Set(); closedTabs = new Set(); audience = {}; aliases = new Set();
+    lib = null; libP = null; IDX = null; GROWTH = undefined; drafts = new Set(); closedTabs = new Set(); levels = null; sharing = {}; aliases = new Set();
     Object.keys(navs).forEach(k => delete navs[k]); Object.keys(links).forEach(k => delete links[k]); Object.keys(pageCache).forEach(k => delete pageCache[k]);
     imgCache.clear(); textCache.clear();
   }
@@ -177,7 +190,7 @@ window.HNData = (function () {
     }).finally(() => { sharedLoad = null; });
     return sharedLoad;
   }
-  // Removing someone else's note: right 'edit' only (the database checks).
+  // Removing someone else's note: approve on its notebook (the database checks).
   const replies = {
     of: (kind, ref) => shared.replies[kind + ':' + ref] || [],
     async add(kind, ref, body) {
@@ -256,8 +269,10 @@ window.HNData = (function () {
 
   return {
     BUCKET, library, nav, toc, page, pages, index, growth, imageUrl, text, my, loadMine, save, flush, shared, loadShared, remove, replies, reset,
-    known, draft, closed, audienceOf, setStatus, setAudience,
+    known, draft, closed, level, can, sharingOf, setStatus, share,
+    get loaded() { return !!lib; },
     get editor() { return !!(lib && lib.editor); }, get approver() { return !!(lib && lib.approver); },
+    get manager() { return !!(lib && lib.manager); },
     onSaveError(fn) { onError = fn; },
     importBackup: data => Api.rpc('hvac_notes_my_import', { p_data: data })
   };

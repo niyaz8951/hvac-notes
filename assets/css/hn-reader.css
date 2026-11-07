@@ -1012,7 +1012,7 @@ mark.hl[data-replies]::after { content: attr(data-replies); display: inline-bloc
 .hn-publish .card h2 { margin-top: 0; }
 .hn-publish .loading-veil { position: static; padding: 40px 0; }
 
-/* Who can read (2026-11-06): drafts, notebooks for selected users, links to pages a reader cannot open */
+/* Who can read (2026-11-06; notebooks shared from the core's Access panel since 006): drafts, links to pages a reader cannot open */
 .draft-tag { display: inline-block; padding: 0 6px; border-radius: 5px; background: var(--warning-soft); color: var(--warning); font: 600 11px/18px var(--ui); letter-spacing: .02em; text-transform: uppercase; vertical-align: 1px; }
 .side-pages .draft-tag { margin-left: 6px; }
 .aud-tag { color: var(--text2); font-weight: 600; white-space: nowrap; }
@@ -1022,7 +1022,10 @@ mark.hl[data-replies]::after { content: attr(data-replies); display: inline-bloc
 .book .vis-bar .vis-text { flex: 1 1 12em; }
 .book .vis-bar .btn { font-size: 13px; }
 .vis-row .hn-row { flex-wrap: wrap; gap: 10px; }
-.vis-row .vis-seg { flex: 0 0 auto; min-width: 230px; }
-@media (max-width: 520px) { .vis-row .vis-seg { flex: 1 1 100%; } }
+.vis-row .row-main { flex: 1 1 14em; }
+.vis-row .btn { flex: 0 0 auto; }
+.vis-row .btn svg { width: 16px; height: 16px; }
+/* Levels (2026-11-07): a notebook shared to view only offers Copy, no highlight or note */
+.hl-bar.copy-only .swatch, .hl-bar.copy-only .hl-sep, .hl-bar.copy-only [data-act="note"] { display: none; }
 .vis-row .hn-row { cursor: default; }
 .vis-row .row-sub { display: block; white-space: normal; overflow: visible; -webkit-line-clamp: unset; text-overflow: clip; }

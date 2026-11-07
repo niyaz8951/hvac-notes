@@ -6,6 +6,7 @@
     { "name": "002_replies", "path": "db/hvac_notes/002_replies.sql" },
     { "name": "003_names", "path": "db/hvac_notes/003_names.sql", "superseded": true },
     { "name": "004_names_no_temp", "path": "db/hvac_notes/004_names_no_temp.sql" },
-    { "name": "005_visibility", "path": "db/hvac_notes/005_visibility.sql" }
+    { "name": "005_visibility", "path": "db/hvac_notes/005_visibility.sql" },
+    { "name": "006_access", "path": "db/hvac_notes/006_access.sql" }
   ]
 }

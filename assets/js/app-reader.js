@@ -9,7 +9,8 @@
     paintCard, openCard, enhance, fieldItem, markWide, loadImages, applySettings, updateThemeColor, backBtn, searchBtn, focusBtn,
     setNav, watchLargeTitle, renderTabbar, where, setActive, canPublish, renderSidebar, coverArt, getIndex, pageOf, aliasMap,
     migrateAliases, routeOf, relatedOf, reviewPool, dueOf, changesOf, wasOf, wordDiff, markSeen, seedSeen, upNext, BOX_DAYS, DAY,
-    hlsOf, progressOf, saveReview, savePractice, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, discussions, shown, draftTag } = A;
+    hlsOf, progressOf, saveReview, savePractice, othersOn, cardOthers, cardNotes, noteBy, otherNotes, thread, replyCount, replyBadge, discussions, shown, draftTag,
+    viewOnly } = A;
   const m = () => A.mine();
   const setTitle = t => Core.setTitle(t ? `${t} · ${SITE}` : SITE);
   const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
@@ -76,7 +77,7 @@
       return html`<a class="book-item" href="#/${t.id}" data-tab="${t.id}">
         <div class="cover"><div class="cover-art">${coverArt(t.id)}</div><span class="cover-sub">${t.kicker}</span><span class="cover-name">${t.cover || t.name}</span></div>
         <div class="book-meta"><span>${pages.length ? `${pages.length} ${pages.length === 1 ? 'page' : 'pages'}` : 'Coming soon'}</span>
-        ${D.editor && D.audienceOf(t.id) === 'selected' ? html`<span class="aud-tag" title="Selected users only">Selected</span>` : ''}
+        ${shareTag(t.id)}
         ${done ? html`<span class="book-progress">${Math.round(done / pages.length * 100)}%</span>` : ''}</div></a>`;
     };
 
@@ -128,44 +129,51 @@
         ${status}${chev()}</a>`);
     });
     render(main, html`<div class="hn-page"><h1 class="large-title">${t.name}</h1><p class="subtitle">${t.blurb}</p>
-      ${audienceRow(tab)}${notesRow(tab)}${dueN ? html`<div class="group gap-b"><a class="hn-row with-icon" href="#/review/${tab}"><span class="icon-tile it-review">${icon('i-review')}</span>
+      ${shareRow(tab)}${notesRow(tab)}${dueN ? html`<div class="group gap-b"><a class="hn-row with-icon" href="#/review/${tab}"><span class="icon-tile it-review">${icon('i-review')}</span>
       <span class="row-main"><span class="row-title">Review</span></span><span class="row-value">${dueN} due</span>${chev()}</a></div>` : ''}
       ${symN || fieldN ? html`<div class="group gap-b">
         ${symN ? html`<a class="hn-row with-icon" href="#/symptoms/${tab}"><span class="icon-tile it-symptoms">${icon('i-wrench')}</span><span class="row-main"><span class="row-title">Troubleshooting</span></span><span class="row-value">${symN}</span>${chev()}</a>` : ''}
         ${fieldN ? html`<a class="hn-row with-icon" href="#/field/${tab}"><span class="icon-tile it-field">${icon('i-globe')}</span><span class="row-main"><span class="row-title">In the Field</span></span><span class="row-value">${fieldN}</span>${chev()}</a>` : ''}</div>` : ''}
       ${pages.length ? groups.map(g => html`${g.g ? html`<p class="group-label">${g.g}</p>` : ''}<div class="group">${g.rows}</div>`) : html`<div class="empty"><strong>No Pages Yet</strong></div>`}</div>`);
-    bindAudience(tab);
+    bindShare(tab);
     watchLargeTitle();
   }
 
-  // Who can read a notebook (editors see it; the tile admin changes it): everyone with HVAC Notes, or selected users,
-  // who hold the tile right nb_<notebook> given on the DAME admin page. Selected with nobody given the right = hidden.
-  const rightOf = tab => 'nb_' + tab.replace(/-/g, '_');
-  function audienceRow(tab) {
-    if (!D.editor) return '';
-    const sel = D.audienceOf(tab) === 'selected';
-    return html`<div class="group gap-b vis-row" id="vis-row"><div class="hn-row"><span class="row-main"><span class="row-title">Who can read</span>
-      <span class="row-sub">${sel ? html`Selected users: those given the right <span class="mono">${rightOf(tab)}</span> on the DAME admin page (Tiles &gt; HVAC Notes &gt; Access). Editors always can.` : 'Everyone with HVAC Notes. Drafts stay with editors until approved.'}</span></span>
-      ${D.approver ? html`<div class="seg vis-seg" role="group" aria-label="Who can read"><button type="button" data-aud="all" aria-pressed="${!sel}">All users</button><button type="button" data-aud="selected" aria-pressed="${sel}">Selected users</button></div>` : html`<span class="row-value">${sel ? 'Selected users' : 'All users'}</span>`}</div></div>`;
+  // Who can open a notebook: the core's Access panel (managers). Everyone in HVAC Notes (the default; each works at
+  // his own level), everyone view only, or only the people and groups listed (Can view / Can edit). A reader whose
+  // notebook is shared to view only is told why he cannot highlight or note there.
+  function whoText(sh) {
+    const n = sh.shared || 0, more = n ? ` and ${plural(n, 'person or group', 'people or groups')} listed` : '';
+    if (sh.everyone === 'edit') return `Everyone with HVAC Notes${more}. Each works at his own level; drafts stay with editors until approved.`;
+    if (sh.everyone === 'read') return `Everyone with HVAC Notes can read${more ? `; only those listed (${n}) can add notes` : '; nobody adds notes here'}.`;
+    return n ? `Only the ${n === 1 ? 'one person or group' : `${n} people and groups`} listed. Managers always can.` : 'Nobody but the managers: the notebook is hidden from everyone else.';
   }
-  function bindAudience(tab) {
-    main.querySelectorAll('[data-aud]').forEach(b => b.addEventListener('click', async () => {
-      const v = b.dataset.aud;
-      if (v === D.audienceOf(tab)) return;
-      const ok = await Core.confirm(v === 'selected'
-        ? `Only users given the right ${rightOf(tab)} will see ${TAB[tab].name}. Until someone has it, the notebook is hidden from everyone but editors.`
-        : `Everyone with HVAC Notes will see the approved pages of ${TAB[tab].name}.`, { title: v === 'selected' ? 'Selected users' : 'All users', ok: 'Change' });
-      if (!ok) return;
-      try { await D.setAudience(tab, v); A.forgetIndex(); IDXC = null; toast(v === 'selected' ? `${TAB[tab].name}: selected users` : `${TAB[tab].name}: all users`); route(); }
+  function shareTag(tab) {
+    const sh = D.manager ? D.sharingOf(tab) : null;
+    if (!sh || sh.everyone === 'edit') return '';
+    return sh.everyone === 'read' ? html`<span class="aud-tag" title="Everyone can view">View only</span>` : html`<span class="aud-tag" title="Only the people and groups listed">Listed only</span>`;
+  }
+  function shareRow(tab) {
+    const sh = D.manager ? D.sharingOf(tab) : null;
+    if (sh) return html`<div class="group gap-b vis-row" id="vis-row"><div class="hn-row"><span class="row-main"><span class="row-title">Who can open it</span>
+      <span class="row-sub">${whoText(sh)}</span></span><button class="btn small" type="button" data-act="share">${icon('i-share')}Share</button></div></div>`;
+    if (D.level(tab) === 'read') return html`<div class="group gap-b vis-row" id="vis-row"><div class="hn-row"><span class="row-main"><span class="row-sub">${viewOnly}</span></span></div></div>`;
+    return '';
+  }
+  function bindShare(tab) {
+    const b = main.querySelector('[data-act="share"]');
+    if (!b) return;
+    b.addEventListener('click', async () => {
+      try { if (await D.share(tab)) { A.forgetIndex(); IDXC = null; toast(`${TAB[tab].name}: sharing changed`); route(); } }
       catch (err) { Core.showError(err); }
-    }));
+    });
   }
 
-  // A draft (editors only): who sees it, and Approve for the tile admin. An approved page: Hide for the tile admin.
+  // A draft (edit and above see drafts): who sees it, and Approve for approve on its notebook. An approved page: Hide.
   function visBar(tab, slug) {
-    const r = `${tab}/${slug}`, draft = D.draft(r);
-    if (draft) return html`<div class="vis-bar draft no-hl" id="vis-bar"><span class="draft-tag">Draft</span><span class="vis-text">Only editors see this page${D.approver ? '' : ' until the tile admin approves it'}.</span>${D.approver ? html`<button class="btn small primary" type="button" data-vis="approved">Approve</button>` : ''}</div>`;
-    if (D.approver) return html`<div class="vis-bar no-hl" id="vis-bar"><span class="vis-text">Open to readers.</span><button class="btn small" type="button" data-vis="draft">Hide</button></div>`;
+    const r = `${tab}/${slug}`, draft = D.draft(r), ok = D.can(tab, 'approve');
+    if (draft) return html`<div class="vis-bar draft no-hl" id="vis-bar"><span class="draft-tag">Draft</span><span class="vis-text">Only editors see this page${ok ? '' : ' until it is approved'}.</span>${ok ? html`<button class="btn small primary" type="button" data-vis="approved">Approve</button>` : ''}</div>`;
+    if (ok) return html`<div class="vis-bar no-hl" id="vis-bar"><span class="vis-text">Open to readers.</span><button class="btn small" type="button" data-vis="draft">Hide</button></div>`;
     return null;
   }
   function bindVis(tab, slug) {
@@ -250,7 +258,7 @@
     watchLargeTitle();
   }
 
-  // Publish, inside the reader (right 'edit'): the panel's code is loaded the first time it is opened.
+  // Publish, inside the reader (edit on every notebook): the panel's code is loaded the first time it is opened.
   const SCRIPT_V = (document.querySelector('script[src*="app-reader.js"]') || {}).src || '';
   const V = (SCRIPT_V.match(/\?v=([\w.-]+)/) || [])[1];
   function loadScript(name) {
@@ -608,8 +616,8 @@
         <div class="book fx-book"><section class="kcard fx-card" data-c="${color}" data-k="${c.key}"><h2 class="fx-title">${c.title}</h2>${bodyOfCard(c)}</section></div>
         <div class="fx-tools">
           <div class="fx-swatches" role="group" aria-label="Colour">${KCOLORS.map(([k, name]) => html`<button class="kswatch" type="button" data-fx="color" data-c="${k}" aria-pressed="${k === color}" aria-label="${name}" title="${name}"></button>`)}</div>
-          <textarea class="fx-note" rows="2" placeholder="Note" aria-label="Note on ${c.title}"></textarea>
-          ${st.note && st.row ? [html`<p class="sheet-sec">Replies to your note</p>`, thread('card', st.row, () => repaintPageCard(c.key))] : ''}
+          ${D.can(c.key.split('/')[0], 'contribute') ? html`<textarea class="fx-note" rows="2" placeholder="Note" aria-label="Note on ${c.title}"></textarea>` : html`<p class="sheet-hint">${viewOnly}</p>`}
+          ${st.note && st.row ? [html`<p class="sheet-sec">Replies to your note</p>`, thread('card', st.row, () => repaintPageCard(c.key), c.key.split('/')[0])] : ''}
           ${otherNotes(c.key, () => repaintPageCard(c.key))}
         </div>
       </div>${ctx(next, i + 1)}`);
@@ -619,6 +627,7 @@
     loadImages(el.querySelector('.fx-card'), () => { });
     el.querySelector('.fx-body').scrollTop = 0;
     const note = el.querySelector('.fx-note'), grow = () => { note.style.height = 'auto'; note.style.height = note.scrollHeight + 'px'; };
+    if (!note) return;
     note.value = st.note || '';
     grow();
     note.addEventListener('input', () => { grow(); focusNote(note.value); });
@@ -752,7 +761,7 @@
       metaNodes.push(html`<p class="grew no-hl">${firstId ? html`<a href="#/${tab}/${slug}/${firstId}">${label}</a>` : html`<span>${label}</span>`}</p>`);
     }
     if (ip) markSeen(ip);
-    const vb = D.editor ? visBar(tab, slug) : null;
+    const vb = D.can(tab, 'edit') ? visBar(tab, slug) : null;
     if (vb) metaNodes.unshift(vb);
     if (metaNodes.length) { if (h1) h1.after(...metaNodes); else tpl.prepend(...metaNodes); }
     const prev = i > 0 ? pages[i - 1] : null, next = i >= 0 && i < pages.length - 1 ? pages[i + 1] : null;
@@ -1314,6 +1323,7 @@
   hlBar.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !lastRange) return;
     const range = lastRange, R = A.R;
+    if ((b.dataset.c || b.dataset.act === 'note') && !(R && D.can(R.tab, 'contribute'))) return;
     if (b.dataset.c) createHighlight(range, b.dataset.c);
     else if (b.dataset.act === 'note') { const h = createHighlight(range, 'yellow'); if (h) setTimeout(() => openHighlight(h.id, true), 60); }
     else if (b.dataset.act === 'copy') copyText(`“${range.toString().trim()}”\n— ${R ? R.title : SITE}, ${SITE}`);
@@ -1326,6 +1336,7 @@
     const r = sel.getRangeAt(0);
     if (!book.contains(r.commonAncestorContainer) || !r.toString().trim()) { hlBar.hidden = true; return; }
     lastRange = r.cloneRange(); hlBar.hidden = false;
+    hlBar.classList.toggle('copy-only', !(A.R && D.can(A.R.tab, 'contribute')));   // view only: Copy, no highlight
     // Touch screens keep the colours at the top (the phone's own search panel takes the bottom);
     // if the selection itself is up there, the colours sit just under it instead.
     hlBar.style.top = '';
@@ -1349,8 +1360,8 @@
       <blockquote class="sheet-quote" data-c="${h.color}">${h.quote.exact}</blockquote>
       ${h.note ? html`<p class="note-text other-text">${h.note}</p>` : ''}
       <div class="sheet-actions"><button class="btn" type="button" data-act="copy">${icon('i-copy')}Copy</button>
-      ${canPublish() ? html`<button class="btn danger" type="button" data-act="remove">${icon('i-trash')}Remove</button>` : ''}</div>
-      <p class="sheet-sec">Replies</p>${thread('highlight', h.id, () => refreshMark(h.id))}`, body => {
+      ${D.can(h.tab, 'approve') ? html`<button class="btn danger" type="button" data-act="remove">${icon('i-trash')}Remove</button>` : ''}</div>
+      <p class="sheet-sec">Replies</p>${thread('highlight', h.id, () => refreshMark(h.id), h.tab)}`, body => {
       body.querySelector('[data-act="copy"]').onclick = () => copyText(`“${h.quote.exact}”${h.note ? `\nNote (${h.by}): ${h.note}` : ''}\n— ${h.title}, ${SITE}`);
       const rm = body.querySelector('[data-act="remove"]');
       if (rm) rm.onclick = async () => {
@@ -1372,7 +1383,7 @@
       <p class="sheet-hint">Your highlight and note are seen by everyone with HVAC Notes.</p>
       <div class="sheet-actions"><button class="btn" type="button" data-act="copy">${icon('i-copy')}Copy</button>
       <button class="btn danger" type="button" data-act="delete">${icon('i-trash')}Delete</button></div>
-      <p class="sheet-sec">Replies</p>${thread('highlight', h.id, () => refreshMark(h.id))}`, body => {
+      <p class="sheet-sec">Replies</p>${thread('highlight', h.id, () => refreshMark(h.id), h.tab)}`, body => {
       const marks = () => document.querySelectorAll(`mark.hl[data-hl="${CSS.escape(id)}"]`);
       body.querySelectorAll('.swatch').forEach(b => b.onclick = () => {
         h.color = b.dataset.c; D.save.highlight(h);
